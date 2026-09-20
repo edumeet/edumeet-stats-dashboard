@@ -1,73 +1,87 @@
 /*
- * Inter is self-hosted, not imported from fonts.googleapis.com.
+ * Roboto is self-hosted, not imported from fonts.googleapis.com.
+ *
+ * Roboto is the face the edumeet client sets on <html>, so the dashboard uses
+ * the same one and reads as part of the same product rather than a bolted-on
+ * tool.
  *
  * `next/font/google` (see app/layout.tsx) downloads the face at build time and
  * serves it from this app's own origin, exposing it as the CSS variable
- * `--font-inter`. That matters for a self-hosted deployment: an `@import` of a
+ * `--font-roboto`. That matters for a self-hosted deployment: an `@import` of a
  * Google URL is an outbound request from every viewer's browser to a third
  * party, which an air-gapped or egress-restricted network blocks — leaving the
  * dashboard to render in the fallback face after a visible delay — and which
  * an operator running this on their own infrastructure did not agree to.
  *
- * The stacks below name `var(--font-inter)` first and keep real fallbacks, so
+ * The stacks below name `var(--font-roboto)` first and keep real fallbacks, so
  * the page is still correct if the face fails to load.
  */
 
 :root {
   /* ══════════════════════════════════════════════════════════════════════
-     Nocturne design tokens — light variant.
+     edumeet design tokens — light variant.
+
+     The palette is the edumeet client's own: the deep-blue ramp behind its
+     background gradient (#012a4a → #013a63 → #01497c), the amber from the
+     logo's wordmark (#f09e00) as the second accent, and the logo's magenta
+     (#9c298c) as the third categorical hue. Radii follow the client's
+     `roundedness: 10`.
+
      The system is authored dark-first (see [data-theme="dark"] below); this
      block derives the light counterpart by swapping the role tokens and
      mirroring the tonal ramps end-for-end, so a component written as
      "background: --color-accent-800 / text: --color-accent-100" stays a
      light chip with dark ink here and a dark chip with light ink there.
      ══════════════════════════════════════════════════════════════════════ */
-  --color-bg: #f7f7fb;
+  --color-bg: #f2f6f9;
   --color-surface: #ffffff;
-  --color-text: #1b1c26;
-  --color-accent: #5d5294;
-  --color-accent-2: #796cbf;
-  --color-divider: color-mix(in srgb, #1b1c26 14%, transparent);
+  --color-text: #012a4a;
+  --color-accent: #01497c;
+  --color-accent-2: #f09e00;
+  --color-divider: color-mix(in srgb, #012a4a 14%, transparent);
 
   /* Tonal ramps — mirrored: 100 is the darkest step on light grounds. */
-  --color-neutral-100: #292b31;
-  --color-neutral-200: #3f424d;
-  --color-neutral-300: #595d6c;
-  --color-neutral-400: #75798c;
-  --color-neutral-500: #9397ab;
-  --color-neutral-600: #b2b6ca;
-  --color-neutral-700: #cfd3e5;
-  --color-neutral-800: #e4e7f5;
-  --color-neutral-900: #f3f5fe;
+  --color-neutral-100: #10222f;
+  --color-neutral-200: #23394a;
+  --color-neutral-300: #3c5567;
+  --color-neutral-400: #5b7488;
+  --color-neutral-500: #8199ab;
+  --color-neutral-600: #a8bcc9;
+  --color-neutral-700: #cbdae3;
+  --color-neutral-800: #e2ebf1;
+  --color-neutral-900: #f1f6f9;
 
-  --color-accent-100: #2b2741;
-  --color-accent-200: #423a6a;
-  --color-accent-300: #5d5294;
-  --color-accent-400: #796cbf;
-  --color-accent-500: #968ae0;
-  --color-accent-600: #b5abfc;
-  --color-accent-700: #d2cefd;
-  --color-accent-800: #e7e5fe;
-  --color-accent-900: #f5f4ff;
+  --color-accent-100: #011c31;
+  --color-accent-200: #012a4a;
+  --color-accent-300: #01497c;
+  --color-accent-400: #14608f;
+  --color-accent-500: #2c7da0;
+  --color-accent-600: #61a5c2;
+  --color-accent-700: #96c7dc;
+  --color-accent-800: #cae3ef;
+  --color-accent-900: #e9f3f8;
 
-  --color-accent-2-100: #2b293a;
-  --color-accent-2-200: #423e5d;
-  --color-accent-2-300: #5c5783;
-  --color-accent-2-400: #7972a9;
-  --color-accent-2-500: #9690c9;
-  --color-accent-2-600: #b5afe8;
-  --color-accent-2-700: #d2cefd;
-  --color-accent-2-800: #e7e5fe;
-  --color-accent-2-900: #f5f4ff;
+  --color-accent-2-100: #3d2800;
+  --color-accent-2-200: #5c3c00;
+  --color-accent-2-300: #8a5a00;
+  --color-accent-2-400: #b87800;
+  --color-accent-2-500: #f09e00;
+  --color-accent-2-600: #ffb833;
+  --color-accent-2-700: #ffd27a;
+  --color-accent-2-800: #ffe7bb;
+  --color-accent-2-900: #fff6e6;
 
-  /* Quality semantics — good / fair / poor, shared by both themes. */
-  --quality-good: #3f8b56;
-  --quality-fair: #a3762e;
-  --quality-poor: #a8483f;
+  /* Quality semantics — good / fair / poor, shared by both themes.
+     `fair` is a darkened relative of the brand amber rather than #f09e00
+     itself: the brand value reads at 2.2:1 on white, which is fine for a fill
+     but not for the labels and badges this token also paints. */
+  --quality-good: #2f7d54;
+  --quality-fair: #8f6215;
+  --quality-poor: #b3392f;
 
-  --font-heading: var(--font-inter), system-ui, sans-serif;
+  --font-heading: var(--font-roboto), system-ui, sans-serif;
   --font-heading-weight: 500;
-  --font-body: var(--font-inter), system-ui, sans-serif;
+  --font-body: var(--font-roboto), system-ui, sans-serif;
 
   --space-1: 2.8px;
   --space-2: 5.6px;
@@ -76,36 +90,38 @@
   --space-6: 16.8px;
   --space-8: 22.4px;
 
-  --shadow-sm: 0 0 0 1px #e4e7f5;
-  --shadow-md: 0 0 0 1px #e4e7f5, 0 6px 18px rgba(27, 28, 38, 0.08);
-  --shadow-lg: 0 0 0 1px #cfd3e5, 0 16px 40px rgba(27, 28, 38, 0.14);
+  --shadow-sm: 0 0 0 1px #e2ebf1;
+  --shadow-md: 0 0 0 1px #e2ebf1, 0 6px 18px rgba(1, 42, 74, 0.08);
+  --shadow-lg: 0 0 0 1px #cbdae3, 0 16px 40px rgba(1, 42, 74, 0.14);
 
   /* ── Application semantics, mapped onto the tokens above ── */
   --bg-primary: var(--color-bg);
-  --bg-secondary: #f0f0f7;
-  --bg-tertiary: #e6e6f0;
-  --border-color: #d7d8e5;
-  --border-light: #e8e9f2;
+  --bg-secondary: #e8eff5;
+  --bg-tertiary: #dde7ef;
+  --border-color: #cddae4;
+  --border-light: #e3ebf1;
   --text-primary: var(--color-text);
-  --text-secondary: #4a4c5e;
-  --text-muted: #75798c;
+  --text-secondary: #2f4d63;
+  --text-muted: #5b7488;
   --card-bg: var(--color-surface);
-  --info-card-bg: #f4f3fb;
-  --summary-bg: #f2f0fb;
+  --info-card-bg: #f4f8fb;
+  --summary-bg: #eaf2f8;
   --summary-border: var(--color-accent);
   --timeline-bg: var(--color-surface);
-  --hover-bg: #f0eef9;
+  --hover-bg: #e7f0f7;
   --accent: var(--color-accent);
   --accent-light: var(--color-accent-2);
   --success: var(--quality-good);
   --danger: var(--quality-poor);
   --warning: var(--quality-fair);
-  --violet: #796cbf;
+  /* Kept under its historical name; the hue is now edumeet's logo magenta. */
+  --violet: #9c298c;
   --axis-stroke: var(--border-light);
-  --grid-line: rgba(27, 28, 38, 0.07);
+  --grid-line: rgba(1, 42, 74, 0.08);
+  /* edumeet client: `roundedness: 10` */
   --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 
   /* ── Buttons ── */
   /* Primary: tinted accent background, accent text */
@@ -122,77 +138,84 @@
 
 [data-theme="dark"] {
   /* ══════════════════════════════════════════════════════════════════════
-     Nocturne — the system as authored. Values below are the design system's
-     own tokens, unmodified; everything else in the app reads them through
-     the application semantics at the bottom of this block.
+     edumeet — the system as authored, dark-first.
+
+     This is the variant that matches the edumeet client itself: the client's
+     background gradient runs #012a4a → #013a63 → #01497c, so the dashboard's
+     ground sits just below that range and its surfaces land on it. Everything
+     else in the app reads these through the application semantics at the
+     bottom of this block.
      ══════════════════════════════════════════════════════════════════════ */
-  --color-bg: #161826;
-  --color-surface: #232532;
-  --color-text: #e9e9ed;
-  --color-accent: #9184d9;
-  --color-accent-2: #a7a1db;
-  --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+  --color-bg: #011f37;
+  --color-surface: #012a4a;
+  --color-text: #e7eff5;
+  --color-accent: #61a5c2;
+  --color-accent-2: #f2a922;
+  --color-divider: color-mix(in srgb, #e7eff5 16%, transparent);
 
-  --color-neutral-100: #f3f5fe;
-  --color-neutral-200: #e4e7f5;
-  --color-neutral-300: #cfd3e5;
-  --color-neutral-400: #b2b6ca;
-  --color-neutral-500: #9397ab;
-  --color-neutral-600: #75798c;
-  --color-neutral-700: #595d6c;
-  --color-neutral-800: #3f424d;
-  --color-neutral-900: #292b31;
+  --color-neutral-100: #f1f6f9;
+  --color-neutral-200: #e2ebf1;
+  --color-neutral-300: #cbdae3;
+  --color-neutral-400: #a8bcc9;
+  --color-neutral-500: #8199ab;
+  --color-neutral-600: #5b7488;
+  --color-neutral-700: #3c5567;
+  --color-neutral-800: #23394a;
+  --color-neutral-900: #10222f;
 
-  --color-accent-100: #f5f4ff;
-  --color-accent-200: #e7e5fe;
-  --color-accent-300: #d2cefd;
-  --color-accent-400: #b5abfc;
-  --color-accent-500: #968ae0;
-  --color-accent-600: #796cbf;
-  --color-accent-700: #5d5294;
-  --color-accent-800: #423a6a;
-  --color-accent-900: #2b2741;
+  /* The dark ramp bottoms out at #16527d rather than at the surface navy:
+     step 800 is the chip background behind accent tags, and a chip the same
+     colour as the card it sits on is not a chip. */
+  --color-accent-100: #e9f3f8;
+  --color-accent-200: #cae3ef;
+  --color-accent-300: #96c7dc;
+  --color-accent-400: #61a5c2;
+  --color-accent-500: #2c7da0;
+  --color-accent-600: #1e678e;
+  --color-accent-700: #1a5c81;
+  --color-accent-800: #16527d;
+  --color-accent-900: #012a4a;
 
-  --color-accent-2-100: #f5f4ff;
-  --color-accent-2-200: #e7e5fe;
-  --color-accent-2-300: #d2cefd;
-  --color-accent-2-400: #b5afe8;
-  --color-accent-2-500: #9690c9;
-  --color-accent-2-600: #7972a9;
-  --color-accent-2-700: #5c5783;
-  --color-accent-2-800: #423e5d;
-  --color-accent-2-900: #2b293a;
+  --color-accent-2-100: #fff6e6;
+  --color-accent-2-200: #ffe7bb;
+  --color-accent-2-300: #ffd27a;
+  --color-accent-2-400: #ffb833;
+  --color-accent-2-500: #f09e00;
+  --color-accent-2-600: #b87800;
+  --color-accent-2-700: #8a5a00;
+  --color-accent-2-800: #5c3c00;
+  --color-accent-2-900: #3d2800;
 
   --quality-good: #7fbb8e;
-  --quality-fair: #d1a85a;
-  --quality-poor: #c97b74;
+  --quality-fair: #e0aa4f;
+  --quality-poor: #d98a80;
 
-  --shadow-sm: 0 0 0 1px #3f424d;
-  --shadow-md: 0 0 0 1px #595d6c, 0 6px 18px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 0 0 1px #9397ab, 0 16px 40px rgba(0, 0, 0, 0.65);
+  --shadow-sm: 0 0 0 1px #14496e;
+  --shadow-md: 0 0 0 1px #1b5580, 0 6px 18px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 0 0 1px #3d7ea3, 0 16px 40px rgba(0, 0, 0, 0.65);
 
   /* ── Application semantics ── */
   --bg-primary: var(--color-bg);
-  --bg-secondary: #1d1f2d;
+  --bg-secondary: #012540;
   --bg-tertiary: var(--color-surface);
-  --border-color: #3f424d;
-  --border-light: #2b2d3a;
+  --border-color: #14496e;
+  --border-light: #0b3557;
   --text-primary: var(--color-text);
-  --text-secondary: #b2b6ca;
-  --text-muted: #9397ab;
+  --text-secondary: #a9c6d8;
+  --text-muted: #7fa3ba;
   --card-bg: var(--color-surface);
-  --info-card-bg: #1f2130;
-  --summary-bg: #22243a;
+  --info-card-bg: #01243d;
+  --summary-bg: #012f52;
   --summary-border: var(--color-accent);
   --timeline-bg: var(--color-surface);
-  --hover-bg: #2a2c3b;
+  --hover-bg: #01365c;
   --accent: var(--color-accent);
   --accent-light: var(--color-accent-2);
   --success: var(--quality-good);
   --danger: var(--quality-poor);
   --warning: var(--quality-fair);
-  --violet: #b5abfc;
-  --grid-line: rgba(233, 233, 237, 0.08);
+  --violet: #d67ec5;
+  --grid-line: rgba(231, 239, 245, 0.09);
 }
 
 *,
@@ -202,7 +225,7 @@
 }
 
 body {
-  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: var(--font-roboto), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   transition: background-color 0.2s ease, color 0.2s ease;
@@ -285,8 +308,8 @@ a:hover {
 
 @keyframes pane-highlight {
   0% {
-    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.7);
-    background-color: rgba(96, 165, 250, 0.06);
+    box-shadow: 0 0 0 0 rgba(97, 165, 194, 0.7);
+    background-color: rgba(97, 165, 194, 0.08);
   }
   100% {
     box-shadow: 0 0 0 0 transparent;

@@ -99,9 +99,9 @@ RUN addgroup -g 1001 -S nodejs && adduser -S -u 1001 -G nodejs nextjs
 # minimal node_modules — the AWS SDK alone would otherwise dominate the image.
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
-# `public/` is currently near-empty but the path must exist: Next's server
-# resolves static files through it, and a missing directory is an error rather
-# than an empty one.
+# `public/` holds the ObserveRTC mark used by the footer credit, and the path
+# must exist regardless: Next's server resolves static files through it, and a
+# missing directory is an error rather than an empty one.
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
 
 # The licence travels with the binary. Apache-2.0 requires a copy of the licence

@@ -1,0 +1,85 @@
+/*
+ * Joint-project credit for the dashboard.
+ *
+ * edumeet supplies the design and the deployment; the sample pipeline behind
+ * every view here is ObserveRTC. The badge sits bottom-left because the
+ * compare button already owns bottom-right (see CompareFloatingButton), and it
+ * stays quiet: muted ink at rest, full contrast only on hover/focus.
+ */
+
+.badge {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  z-index: 60;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+
+  padding: 0.25rem 0.6rem 0.25rem 0.3rem;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: var(--card-bg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+
+  font-size: 0.68rem;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+  text-decoration: none;
+  opacity: 0.75;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.badge:hover,
+.badge:focus-visible {
+  opacity: 1;
+  color: var(--text-primary);
+  border-color: var(--border-color);
+  text-decoration: none;
+}
+
+/*
+ * The upstream mark is a black magnifier on transparent, which vanishes on the
+ * dark navy ground. Rather than recolouring the artwork (filters would also
+ * flatten the orange in it), it is set on its own light chip so the official
+ * colours are correct in both themes.
+ */
+.mark {
+  display: block;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  border-radius: 50%;
+  background: #ffffff;
+  flex: none;
+}
+
+.prefix {
+  color: inherit;
+}
+
+.name {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.badge:hover .name,
+.badge:focus-visible .name {
+  color: var(--text-primary);
+}
+
+/* Out of the way on narrow screens: the mark alone still carries the credit. */
+@media (max-width: 600px) {
+  .badge {
+    bottom: 8px;
+    left: 8px;
+    padding: 0.2rem;
+  }
+
+  .prefix,
+  .name {
+    display: none;
+  }
+}
