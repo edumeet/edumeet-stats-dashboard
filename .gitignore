@@ -35,7 +35,6 @@ pnpm-debug.log*
 
 # One package manager. `npm ci` in the Dockerfile reads package-lock.json, and
 # a second lockfile silently disagreeing with it is a bad afternoon.
-yarn.lock
 pnpm-lock.yaml
 
 # Editors and OS
