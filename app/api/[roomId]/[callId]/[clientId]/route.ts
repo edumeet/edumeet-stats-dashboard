@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { guarded } from '@/lib/auth/guard';
 import { keySegments } from '@/lib/keys';
-import { objectExists, presignGet } from '@/lib/s3';
+import { BASE_PATH } from '@/lib/basePath';
+import { objectExists, presignGet, storageConfig } from '@/lib/s3';
 
 /**
  * Never prerendered.
@@ -14,7 +15,8 @@ import { objectExists, presignGet } from '@/lib/s3';
 export const dynamic = 'force-dynamic';
 
 // GET /api/:roomId/:callId/:clientId
-// Returns a short-lived presigned URL the browser uses to fetch the .jsonl directly from storage.
+// Returns where the browser fetches the .jsonl from: a short-lived presigned URL
+// straight to storage, or this server's own samples route.
 //
 // A signed URL is a permission to read that works without a session until it
 // expires. So it is made only for a signed-in caller, and only for the sample
@@ -31,7 +33,12 @@ export const GET = guarded(async (
   try {
     const key = `${roomId}/${callId}/${clientId}.jsonl`;
     if (!(await objectExists(key))) return NextResponse.json({ stats: [] }, { status: 404 });
-    const signedUrl = await presignGet(key);
+    // With S3_SAMPLES_VIA=server the browser reads the file from this server,
+    // with its session, and storage does not have to be reachable from it.
+    const signedUrl =
+      storageConfig().samplesVia === 'server'
+        ? `${BASE_PATH}/api/${[roomId, callId, clientId].map(encodeURIComponent).join('/')}/samples`
+        : await presignGet(key);
     return NextResponse.json({ stats: [{ id: clientId, signedUrl }] });
   } catch (err) {
     console.error('[api/clientId]', err);

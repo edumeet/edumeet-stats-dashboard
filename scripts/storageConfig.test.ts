@@ -40,6 +40,7 @@ const S3_KEYS = [
   'S3_SECRET_ACCESS_KEY',
   'S3_FORCE_PATH_STYLE',
   'S3_PRESIGN_TTL',
+  'S3_SAMPLES_VIA',
 ];
 
 /** Run `fn` with exactly this environment for the S3 settings. */
@@ -228,6 +229,23 @@ check('a key that is not under the prefix is left alone rather than mangled', ()
   withEnv({ S3_BUCKET: 'b', S3_PREFIX: 'tenant-a/' }, () => {
     assert.equal(fromStorageKey('tenant-b/room/call/c.jsonl'), 'tenant-b/room/call/c.jsonl');
   });
+});
+
+console.log('\nhow the browser gets a sample file');
+
+check('presigned URLs unless the installation says otherwise', () => {
+  assert.equal(withEnv({ S3_BUCKET: 'b' }, storageConfig).samplesVia, 'presigned');
+  assert.equal(withEnv({ S3_BUCKET: 'b', S3_SAMPLES_VIA: '' }, storageConfig).samplesVia, 'presigned');
+  assert.equal(withEnv({ S3_BUCKET: 'b', S3_SAMPLES_VIA: 'presigned' }, storageConfig).samplesVia, 'presigned');
+  assert.equal(withEnv({ S3_BUCKET: 'b', S3_SAMPLES_VIA: 'server' }, storageConfig).samplesVia, 'server');
+  assert.equal(withEnv({ S3_BUCKET: 'b', S3_SAMPLES_VIA: ' Server ' }, storageConfig).samplesVia, 'server');
+});
+
+check('a value that is neither is said, and does not stop the app', () => {
+  const report = withEnv({ S3_BUCKET: 'b', S3_ACCESS_KEY_ID: 'k', S3_SECRET_ACCESS_KEY: 's', S3_SAMPLES_VIA: 'proxy' }, () => storageConfigReport());
+  assert.deepEqual(report.problems, []);
+  assert.ok(report.warnings.some((w) => w.includes('S3_SAMPLES_VIA')));
+  assert.equal(withEnv({ S3_BUCKET: 'b', S3_SAMPLES_VIA: 'proxy' }, storageConfig).samplesVia, 'presigned');
 });
 
 console.log(`\n${passed} checks passed`);

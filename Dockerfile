@@ -92,6 +92,8 @@ ENV NODE_ENV=production \
 #   S3_SECRET_ACCESS_KEY    (an instance/task role, a mounted profile)
 #   S3_FORCE_PATH_STYLE   true for MinIO and most self-hosted, false for AWS/R2
 #   S3_PRESIGN_TTL        presigned URL lifetime in seconds, default 900
+#   S3_SAMPLES_VIA        `server` passes sample files through the dashboard
+#                         instead of signing URLs, so storage can stay internal
 ENV S3_BUCKET="" \
     S3_PREFIX="" \
     S3_ENDPOINT="" \
@@ -100,7 +102,8 @@ ENV S3_BUCKET="" \
     S3_ACCESS_KEY_ID="" \
     S3_SECRET_ACCESS_KEY="" \
     S3_FORCE_PATH_STYLE="true" \
-    S3_PRESIGN_TTL="900"
+    S3_PRESIGN_TTL="900" \
+    S3_SAMPLES_VIA=""
 
 # `wget` (busybox, already present) serves the healthcheck — no extra package.
 # Running as the image's existing unprivileged user rather than root.

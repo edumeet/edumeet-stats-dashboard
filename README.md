@@ -93,7 +93,8 @@ OIDC_ALLOW_VALUES=stats-viewer
   or not and nothing else.
 - A presigned URL for a client's sample file works without a session until it
   expires (`S3_PRESIGN_TTL`, 15 minutes). It is made for a signed-in user only,
-  and only for a sample file that exists.
+  and only for a sample file that exists. With `S3_SAMPLES_VIA=server` there are
+  no such URLs: the files come through the dashboard, with the session.
 - One dashboard shows one bucket, or one `S3_PREFIX` of it, to everybody who
   passes the rule. For tenants that must not see each other's meetings, run one
   dashboard per prefix, each with its own rule.
@@ -286,7 +287,8 @@ GET /api                                    list roomIds
 GET /api/session                            who is signed in
 GET /api/:roomId                            list callIds in a room
 GET /api/:roomId/:callId                    list clientIds, routerIds *and sfuIds* in a call
-GET /api/:roomId/:callId/:clientId          return direct storage URL for the .jsonl file
+GET /api/:roomId/:callId/:clientId          return where to fetch the .jsonl file from
+GET /api/:roomId/:callId/:clientId/samples  the .jsonl file itself (only with S3_SAMPLES_VIA=server)
 GET /api/:roomId/:callId/call-summary       every call summary in the folder, merged
 GET /api/:roomId/:callId/object/:name       one call-folder object, raw
 GET /api/:roomId/:callId/router/:routerId   mediasoup router sample
@@ -434,6 +436,7 @@ differ by environment alone. `.env.example` documents every variable.
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Omit to use the SDK's credential chain (an instance role, a mounted profile) |
 | `S3_FORCE_PATH_STYLE` | `true` for MinIO and most self-hosted gateways, `false` for AWS and R2 |
 | `S3_PRESIGN_TTL` | Presigned URL lifetime in seconds. Default 900 |
+| `S3_SAMPLES_VIA` | `server` passes sample files through the dashboard instead of signing URLs. Default `presigned` |
 | `AUTH_*` / `OIDC_*` | **Required.** The sign-in, see [Who may open it](#who-may-open-it) |
 | `PORT` / `HOSTNAME` | Default `3000` / `0.0.0.0` |
 
@@ -454,6 +457,15 @@ a container network storage is `http://minio:9000`; from the user's machine it
 is `http://localhost:9000`. Signing against the server's own endpoint hands the
 browser a host it cannot resolve. Set this when the two names differ, leave it
 unset when they do not.
+
+**With `S3_SAMPLES_VIA=server` the browser never talks to storage.** A presigned
+URL needs storage to be reachable from wherever the operator sits, and it works
+for anybody who gets hold of it until it expires. Where storage runs next to the
+dashboard on an internal network, as in an eduMEET installation, set
+`S3_SAMPLES_VIA=server`: the sample files are then streamed through
+`GET /api/:roomId/:callId/:clientId/samples`, behind the sign-in like every
+other route, and `S3_PUBLIC_ENDPOINT` and `S3_PRESIGN_TTL` are not used. The
+cost is that the files, which can be many megabytes, pass through the dashboard.
 
 **`NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_BASE_PATH` are the two settings
 that are not runtime-configurable.** `NEXT_PUBLIC_*` values are inlined into the
