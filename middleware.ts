@@ -13,9 +13,13 @@ import { cookieNames, readSessionToken } from '@/lib/auth/session';
  * Only the build's own static files are left out below. They are the same for
  * everybody and hold no meeting data, and the sign-in pages could not load
  * without them.
+ *
+ * The root is named on its own. Under a sub-path the address of the home page
+ * is `/stats`, with nothing after it, and the pattern below asks for a slash:
+ * without the first entry that one page was served to everybody.
  */
 export const config = {
-  matcher: ['/((?!_next/static/).*)'],
+  matcher: ['/', '/((?!_next/static/).*)'],
 };
 
 let reported = false;
