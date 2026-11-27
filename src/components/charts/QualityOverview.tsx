@@ -6,6 +6,7 @@ import { buildPerStreamQuality, QUALITY_COLORS } from '../../utils/qualityClassi
 import { buildSegments } from '../../utils/chartHelpers.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale, formatTimeOnly } from '../../utils/formatting.ts';
+import { html, tableEntry, toHtmlString } from '../../utils/safeHtml.ts';
 import type { QualityState } from '../../api/types.ts';
 
 interface ServerDataLike {
@@ -274,10 +275,11 @@ export function QualityOverview({ serverData, clientStats, eventBus }: QualityOv
             const startStr = formatTimeOnly(seg.start, tz);
             const endStr = formatTimeOnly(seg.end, tz);
             const dur = formatDurationShort(seg.end - seg.start);
-            const label = QUALITY_LABELS[seg.state] ?? seg.state;
+            const label = tableEntry(QUALITY_LABELS, seg.state) ?? seg.state;
+            const tip = html`<strong>${lane.label}</strong><br/>${label}<br/>${startStr} – ${endStr} (${dur})`;
             tooltipDiv
               .style('opacity', '1')
-              .html(`<strong>${lane.label}</strong><br/>${label}<br/>${startStr} – ${endStr} (${dur})`)
+              .html(toHtmlString(tip))
               .style('left', `${event.clientX + 12}px`)
               .style('top', `${event.clientY - 10}px`);
           })

@@ -26,7 +26,8 @@ import type { ClientTrackView } from '../../utils/clientTracks.ts';
 import { formatHMS, formatBps, formatCodecDetails, formatTimeOnly, shortId, lifecycleDuration, tsMs } from '../../utils/formatting.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { QUALITY_LIMITATION_COLORS, QUALITY_LIMITATION_LABELS } from '../../utils/qualityClassifier.ts';
-import { buildChartData, getTrackScoreBadge, extractTimeSeries, detectChanges, type ChartDef } from '../../utils/chartHelpers.ts';
+import { buildChartData, finiteNumber, getTrackScoreBadge, extractTimeSeries, detectChanges, type ChartDef } from '../../utils/chartHelpers.ts';
+import { html } from '../../utils/safeHtml.ts';
 import styles from './ProducerSection.module.css';
 
 interface ProducerSectionProps {
@@ -141,7 +142,7 @@ export function ProducerSection({
           end: o.end,
           color: o.color,
           label: o.label,
-          tooltip: `${o.label ? `<strong>${o.label}</strong><br/>` : ''}${formatTimeOnly(o.start, tz)} – ${formatTimeOnly(o.end, tz)}<br/>${((o.end - o.start) / 1000).toFixed(1)}s overlap`,
+          tooltip: html`${o.label ? html`<strong>${o.label}</strong><br/>` : null}${formatTimeOnly(o.start, tz)} – ${formatTimeOnly(o.end, tz)}<br/>${((o.end - o.start) / 1000).toFixed(1)}s overlap`,
         }))}
         issueLane={issueLane}
         pinLabel={pinPrefix ? `${pinPrefix} > Timeline` : undefined}
@@ -267,14 +268,14 @@ export function ProducerSection({
 
       {layers.map((layer, layerIdx) => {
         const primaryDefs: ChartDef[] = [
-          { title: 'Target Bitrate (kbps)', tip: 'Bitrate the encoder is targeting based on bandwidth estimation. Drops mean the browser detected congestion and is reducing quality.', extract: (v) => v.targetBitrate != null ? v.targetBitrate / 1000 : undefined, formatter: (v) => v.toFixed(0), needNonZero: true, condition: isVideo },
+          { title: 'Target Bitrate (kbps)', tip: 'Bitrate the encoder is targeting based on bandwidth estimation. Drops mean the browser detected congestion and is reducing quality.', extract: (v) => { const n = finiteNumber(v.targetBitrate); return n == null ? undefined : n / 1000; }, formatter: (v) => v.toFixed(0), needNonZero: true, condition: isVideo },
           { title: 'Actual Bitrate (kbps)', tip: 'Real throughput from bytes sent. Should track target bitrate closely. Large gaps mean the encoder can\'t keep up (CPU limited) or the network is dropping packets.', extract: (v) => v._actualBitrateKbps, formatter: (v) => formatBps(v * 1000), needNonZero: true },
           { title: 'Frame Rate (FPS)', tip: 'Frames per second being sent. Good: matches capture rate (15–30 fps). Drops below 10 fps indicate CPU pressure or bandwidth limiting.', extract: (v) => v.framesPerSecond, formatter: (v) => `${v.toFixed(1)} fps`, needNonZero: true, condition: isVideo },
-          { title: 'Resolution', tip: 'Video height in pixels being sent. Drops from the source resolution mean the encoder is scaling down due to CPU or bandwidth constraints.', extract: (v) => v.frameHeight || undefined, formatter: (v) => `${v}p`, needNonZero: true, condition: isVideo },
+          { title: 'Resolution', tip: 'Video height in pixels being sent. Drops from the source resolution mean the encoder is scaling down due to CPU or bandwidth constraints.', extract: (v) => finiteNumber(v.frameHeight) || undefined, formatter: (v) => `${v}p`, needNonZero: true, condition: isVideo },
           { title: 'Encode Time/Frame (ms)', tip: 'Average time to encode one frame. Good: <10ms. Warning: 10–30ms. Bad: >30ms. High values indicate CPU pressure and may cause frame drops.', extract: (v) => v.encodeTimePerFrame, formatter: (v) => `${v.toFixed(2)} ms`, needNonZero: true, condition: isVideo },
           { title: 'Encode CPU %', tip: 'Fraction of wall-clock time spent encoding. Good: <50%. Warning: 50–80%. Bad: >80%. High values trigger quality limitation and resolution/fps drops.', extract: (v) => v.encodeCpuPercent, formatter: (v) => `${v.toFixed(1)}%`, needNonZero: true, condition: isVideo },
           { title: 'Packets Sent', tip: 'Cumulative RTP packets sent. A flattening curve means the producer stopped sending, possibly paused or network blocked.', extract: (v) => v.packetsSent, needNonZero: true },
-          { title: 'Quality Issues (NACK+PLI+FIR)', tip: 'Sum of receiver feedback requests. NACK = retransmit request, PLI = picture loss, FIR = full key frame request. Any rising trend indicates the receiver is struggling.', extract: (v) => (v.nackCount || 0) + (v.pliCount || 0) + (v.firCount || 0), needNonZero: true },
+          { title: 'Quality Issues (NACK+PLI+FIR)', tip: 'Sum of receiver feedback requests. NACK = retransmit request, PLI = picture loss, FIR = full key frame request. Any rising trend indicates the receiver is struggling.', extract: (v) => (finiteNumber(v.nackCount) ?? 0) + (finiteNumber(v.pliCount) ?? 0) + (finiteNumber(v.firCount) ?? 0), needNonZero: true },
         ];
 
         const advancedDefs: ChartDef[] = [
@@ -312,13 +313,16 @@ export function ProducerSection({
         // possible rather than handing over one interleaved blob.
         const getLayerRows = () => layer.values as unknown as Record<string, unknown>[];
 
+        // The reason is a state name only if it is a string; the sample may
+        // hold anything under that field. An unknown name is still drawn, as
+        // text, cut to a length a legend can carry.
         const qlSamples = isVideo
-          ? layer.values
-              .filter((v) => v.qualityLimitationReason)
-              .map((v) => ({
-                timestamp: tsMs(v.timestamp),
-                state: v.qualityLimitationReason!,
-              }))
+          ? layer.values.flatMap((v) => {
+              const reason: unknown = v.qualityLimitationReason;
+              return typeof reason === 'string' && reason !== ''
+                ? [{ timestamp: tsMs(v.timestamp), state: reason.slice(0, 64) }]
+                : [];
+            })
           : [];
 
         if (primaryCharts.length === 0 && advancedCharts.length === 0) return null;

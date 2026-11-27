@@ -7,8 +7,6 @@ import { useTimezoneTick } from '../../stores/tzStore.ts';
 import {
   d3TimeFormat,
   d3TimeScale,
-  formatDuration,
-  formatHMS,
   mediaKindLabelPrefix,
   producerOverviewHoverHtml,
   shortId,
@@ -17,9 +15,13 @@ import {
   PRODUCER_OVERVIEW_COLORS,
   buildProducerInstantBoxes,
   buildProducerLifecycleSegments,
+  producerEventTip,
+  producerSegmentTip,
+  streamRecordingIdTip,
   type ProducerInstantBox,
   type ProducerLifecycleSegment,
 } from '../../utils/producerTimeline.ts';
+import { toHtmlString, type SafeHtml } from '../../utils/safeHtml.ts';
 import {
   STREAM_RECORDING_ID_COLOR,
   type StreamRecordingIdEvent,
@@ -45,7 +47,7 @@ interface TimelineRowModel {
 }
 
 interface TooltipHandlers {
-  show: (ev: MouseEvent, html: string) => void;
+  show: (ev: MouseEvent, tip: SafeHtml) => void;
   move: (ev: MouseEvent) => void;
   hide: () => void;
 }
@@ -67,7 +69,7 @@ interface RowPointMarker {
   vw: number;
   color: string;
   opacity: number;
-  tipHtml: string;
+  tipHtml: SafeHtml;
 }
 
 function sessionDomain(
@@ -107,23 +109,6 @@ function sessionDomain(
   return [new Date(start - pad), new Date(end + pad)];
 }
 
-function eventTipHtml(label: string, color: string, timestamp: number, tz: string, extra?: string): string {
-  const time = formatHMS(timestamp, tz as never);
-  return (
-    `<strong style="color:${color}">${label}</strong><br/>` +
-    `${time}` +
-    (extra ? `<br/><span style="color:var(--text-muted)">${extra}</span>` : '')
-  );
-}
-
-function segmentTipHtml(seg: ProducerLifecycleSegment, tz: string): string {
-  const range =
-    seg.end > seg.start
-      ? `${formatHMS(seg.start, tz as never)} – ${formatHMS(seg.end, tz as never)}<br/>${formatDuration(seg.end - seg.start)}`
-      : formatHMS(seg.start, tz as never);
-  return `<strong style="color:${seg.color}">${seg.state}</strong><br/>${range}`;
-}
-
 /** Nudge overlapping boxes right so they sit side-by-side (same row). */
 function spreadHorizontally(
   items: SpreadItem[],
@@ -157,7 +142,7 @@ function layoutProducerRow(
 ): { wideSpans: PositionedSpan[]; pointMarkers: RowPointMarker[] } {
   const wideSpans: PositionedSpan[] = [];
   const spreadInput: SpreadItem[] = [];
-  const spreadMeta: Array<{ color: string; opacity: number; tipHtml: string }> = [];
+  const spreadMeta: Array<{ color: string; opacity: number; tipHtml: SafeHtml }> = [];
   let spreadIndex = 0;
 
   for (const box of instants) {
@@ -169,7 +154,7 @@ function layoutProducerRow(
     spreadMeta.push({
       color: box.color,
       opacity: box.label === 'degraded' ? 0.7 : 0.98,
-      tipHtml: eventTipHtml(box.label, box.color, box.timestamp, tz),
+      tipHtml: producerEventTip(box.label, box.color, box.timestamp, tz),
     });
     spreadIndex += 1;
   }
@@ -189,7 +174,7 @@ function layoutProducerRow(
 
     if (isNarrow) {
       spreadInput.push({ idealX, vw: BOX_W, index: spreadIndex });
-      spreadMeta.push({ color: seg.color, opacity: seg.opacity, tipHtml: segmentTipHtml(seg, tz) });
+      spreadMeta.push({ color: seg.color, opacity: seg.opacity, tipHtml: producerSegmentTip(seg, tz) });
       spreadIndex += 1;
     } else if (vw >= 1) {
       wideSpans.push({ seg, vx1: idealX, vw });
@@ -229,7 +214,7 @@ function appendBar(
   h: number,
   color: string,
   opacity: number,
-  tipHtml: string,
+  tipHtml: SafeHtml,
   handlers: TooltipHandlers,
 ) {
   if (vw < 1) return;
@@ -275,16 +260,6 @@ function scrollToStream(streamId: string, sectionId: string, hashPrefix: string)
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
   });
-}
-
-function streamRecordingIdTipHtml(ev: StreamRecordingIdEvent, tz: string): string {
-  const time = formatHMS(ev.timestamp, tz as never);
-  const idLine = ev.newId ? `<br/><code class="id-badge">${shortId(ev.newId)}</code>` : '';
-  const sourceLine = ev.source ? `<br/><span style="color:var(--text-muted)">${ev.source}</span>` : '';
-  return (
-    `<strong style="color:${STREAM_RECORDING_ID_COLOR}">stream recording id changed</strong>` +
-    `<br/>${time}${idLine}${sourceLine}`
-  );
 }
 
 function paintTimeline(
@@ -388,7 +363,7 @@ function paintTimeline(
         BOX_H,
         color,
         opacity,
-        ev ? streamRecordingIdTipHtml(ev, tz) : eventTipHtml('stream rec id', color, 0, tz),
+        ev ? streamRecordingIdTip(ev, tz) : producerEventTip('stream rec id', color, 0, tz),
         handlers,
       );
     }
@@ -457,7 +432,7 @@ function paintTimeline(
     );
 
     for (const { seg, vx1, vw } of wideSpans) {
-      appendBar(barsG, vx1, barY, vw, BOX_H, seg.color, seg.opacity, segmentTipHtml(seg, tz), handlers);
+      appendBar(barsG, vx1, barY, vw, BOX_H, seg.color, seg.opacity, producerSegmentTip(seg, tz), handlers);
     }
 
     for (const { vx1, vw, color, opacity, tipHtml } of pointMarkers) {
@@ -515,13 +490,13 @@ export function StreamsOverviewTimeline({
   const tz = useTimezoneTick();
   const [sessionEnd] = useState(() => globalEnd ?? Date.now());
   const lastWidthRef = useRef(0);
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; html: string } | null>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; html: SafeHtml } | null>(null);
 
   const effectiveEnd = globalEnd ?? sessionEnd;
 
   const tipHandlers = useMemo<TooltipHandlers>(
     () => ({
-      show: (ev, html) => setTooltip({ x: ev.clientX + 12, y: ev.clientY - 10, html }),
+      show: (ev, tip) => setTooltip({ x: ev.clientX + 12, y: ev.clientY - 10, html: tip }),
       move: (ev) => setTooltip((t) => (t ? { ...t, x: ev.clientX + 12, y: ev.clientY - 10 } : null)),
       hide: () => setTooltip(null),
     }),
@@ -626,7 +601,7 @@ export function StreamsOverviewTimeline({
         <div
           className={styles.tooltip}
           style={{ left: tooltip.x, top: tooltip.y, opacity: 1 }}
-          dangerouslySetInnerHTML={{ __html: tooltip.html }}
+          dangerouslySetInnerHTML={{ __html: toHtmlString(tooltip.html) }}
         />
       )}
     </div>

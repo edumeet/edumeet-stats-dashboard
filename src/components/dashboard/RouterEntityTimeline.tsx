@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale, formatDuration } from '../../utils/formatting.ts';
+import { html, joinHtml, textLines, toHtmlString, type SafeHtml } from '../../utils/safeHtml.ts';
 import { ScreenshotButton } from '../sections/ScreenshotButton.tsx';
 import type { RouterEntityGroup } from '../../utils/routerEntityTimeline.ts';
 import styles from './RouterEntityTimeline.module.css';
@@ -13,14 +14,6 @@ const LABEL_W = 96;
 const MARGIN = { top: 8, right: 12, bottom: 24, left: LABEL_W + 8 };
 /** Beyond this, the group scrolls rather than growing the page. */
 const MAX_LANES_BEFORE_SCROLL = 24;
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 interface Props {
   group: RouterEntityGroup;
@@ -68,10 +61,10 @@ export function RouterEntityTimeline({ group, start, end }: Props) {
       .attr('class', styles.tooltip)
       .style('opacity', '0');
 
-    const showTip = (event: MouseEvent, html: string) => {
+    const showTip = (event: MouseEvent, tip: SafeHtml) => {
       tooltipDiv
         .style('opacity', '1')
-        .html(html)
+        .html(toHtmlString(tip))
         .style('left', `${event.clientX + 12}px`)
         .style('top', `${event.clientY - 10}px`);
     };
@@ -111,24 +104,22 @@ export function RouterEntityTimeline({ group, start, end }: Props) {
         const x2 = Math.min(width - MARGIN.right, xScale(new Date(episode.end)));
         if (!Number.isFinite(x1) || !Number.isFinite(x2) || x2 <= x1) continue;
 
-        const html =
-          `<strong style="color:${episode.color}">${escapeHtml(episode.state)}</strong>` +
-          ` <span style="color:var(--text-muted)">· ${escapeHtml(lane.detail ?? group.title)}</span>` +
-          `<br/><code>${escapeHtml(lane.id)}</code>` +
-          `<br/>${d3TimeFormat('%H:%M:%S', tz)(new Date(episode.start))}` +
-          ` – ${d3TimeFormat('%H:%M:%S', tz)(new Date(episode.end))}` +
-          ` <span style="color:var(--text-muted)">(${escapeHtml(
-            formatDuration(episode.end - episode.start),
-          )})</span>` +
-          (episode.initial
-            ? '<br/><span style="color:var(--text-muted)">created in this state — no event before it</span>'
-            : '') +
-          (lane.meta.length
-            ? `<br/><span style="color:var(--text-muted)">${lane.meta.map(escapeHtml).join('<br/>')}</span>`
-            : '') +
-          (lane.closedAt == null
-            ? '<br/><span style="color:var(--text-muted)">still open when the router closed</span>'
-            : '');
+        const time = d3TimeFormat('%H:%M:%S', tz);
+        const lines = [
+          html`<strong style="color:${episode.color}">${episode.state}</strong> <span style="color:var(--text-muted)">· ${lane.detail ?? group.title}</span>`,
+          html`<code>${lane.id}</code>`,
+          html`${time(new Date(episode.start))} – ${time(new Date(episode.end))} <span style="color:var(--text-muted)">(${formatDuration(episode.end - episode.start)})</span>`,
+        ];
+        if (episode.initial) {
+          lines.push(html`<span style="color:var(--text-muted)">created in this state — no event before it</span>`);
+        }
+        if (lane.meta.length) {
+          lines.push(html`<span style="color:var(--text-muted)">${textLines(lane.meta)}</span>`);
+        }
+        if (lane.closedAt == null) {
+          lines.push(html`<span style="color:var(--text-muted)">still open when the router closed</span>`);
+        }
+        const tip = joinHtml(lines);
 
         svg
           .append('rect')
@@ -145,9 +136,9 @@ export function RouterEntityTimeline({ group, start, end }: Props) {
               .attr('opacity', '1')
               .attr('stroke', 'var(--text)')
               .attr('stroke-width', 1);
-            showTip(event, html);
+            showTip(event, tip);
           })
-          .on('mousemove', (event: MouseEvent) => showTip(event, html))
+          .on('mousemove', (event: MouseEvent) => showTip(event, tip))
           .on('mouseleave', function () {
             d3.select(this).attr('opacity', '0.88').attr('stroke', 'none');
             hideTip();

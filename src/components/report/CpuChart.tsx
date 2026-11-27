@@ -4,6 +4,7 @@ import * as d3 from 'd3';
 import { useCompareStore } from '../../stores/compareStore.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale } from '../../utils/formatting.ts';
+import { html, toHtmlString } from '../../utils/safeHtml.ts';
 import { ScreenshotButton } from '../sections/ScreenshotButton.tsx';
 import styles from './CpuChart.module.css';
 
@@ -195,8 +196,9 @@ export function CpuChart({
         decDot.attr('cx', px).attr('cy', yScale(d.total)).style('display', null);
         const timeStr = d3TimeFormat('%H:%M:%S', tz)(d.timestamp);
         const rect = container.getBoundingClientRect();
+        const tip = html`<strong>Total: ${d.total.toFixed(1)}%</strong><br/>Encode: ${d.encode.toFixed(1)}% · Decode: ${d.decode.toFixed(1)}%<br/><span style="color:var(--text-muted)">${timeStr}</span>`;
         tooltipDiv
-          .html(`<strong>Total: ${d.total.toFixed(1)}%</strong><br/>Encode: ${d.encode.toFixed(1)}% · Decode: ${d.decode.toFixed(1)}%<br/><span style="color:var(--text-muted)">${timeStr}</span>`)
+          .html(toHtmlString(tip))
           .style('opacity', '1').style('left', `${rect.left + px + 12}px`).style('top', `${rect.top + yScale(d.total) - 10}px`);
       }
     };

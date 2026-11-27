@@ -1162,6 +1162,7 @@ npm run test:call-dashboard     # the call page's model: loaded clients, facts, 
 npm run test:worker-requests    # reply correlation for the shared stats worker
 npm run test:ice-candidate-story# what happened to one ICE candidate, over time
 npm run test:storage-config     # the deployment's storage settings, and what counts as broken
+npm run test:safe-html          # tooltip markup: sample text stays text, and no sink takes anything else
 ```
 
 `scripts/fixtures/` holds an unmodified `call-summary.json` and

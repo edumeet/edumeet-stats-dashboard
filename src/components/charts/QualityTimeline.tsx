@@ -5,8 +5,8 @@ import { QUALITY_COLORS } from '../../utils/qualityClassifier.ts';
 import { useCompareStore } from '../../stores/compareStore.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale, formatTimeOnly } from '../../utils/formatting.ts';
+import { html, tableEntry, toHtmlString, toText } from '../../utils/safeHtml.ts';
 import { ScreenshotButton } from '../sections/ScreenshotButton.tsx';
-import type { QualityState } from '../../api/types.ts';
 import styles from './QualityTimeline.module.css';
 
 export interface QualityTimelineProps {
@@ -90,18 +90,15 @@ export function QualityTimeline({ title, description, samples, startTime, endTim
   const chartRef = useRef<HTMLDivElement>(null);
 
   const getColorFn = useCallback(
-    (state: string): string => {
-      if (colorMap && state in colorMap) return colorMap[state];
-      return QUALITY_COLORS[state as QualityState] ?? 'var(--text-muted)';
-    },
+    (state: string): string =>
+      tableEntry(colorMap ?? {}, state) ?? tableEntry(QUALITY_COLORS, state) ?? 'var(--text-muted)',
     [colorMap],
   );
 
   const getLabelFn = useCallback(
-    (state: string): string => {
-      if (labelMap && state in labelMap) return labelMap[state];
-      return STATE_LABELS[state] ?? state;
-    },
+    // An unknown state is shown under its own name, and only ever as text.
+    (state: string): string =>
+      tableEntry(labelMap ?? {}, state) ?? tableEntry(STATE_LABELS, state) ?? toText(state),
     [labelMap],
   );
 
@@ -204,10 +201,10 @@ export function QualityTimeline({ title, description, samples, startTime, endTim
           const startStr = formatTimeOnly(seg.start, tz);
           const endStr = formatTimeOnly(seg.end, tz);
           const dur = formatDurationShort(seg.end - seg.start);
-          const label = getLabelFn(seg.state);
+          const tip = html`<strong>${getLabelFn(seg.state)}</strong><br/>${startStr} – ${endStr} (${dur})`;
           tooltipDiv
             .style('opacity', '1')
-            .html(`<strong>${label}</strong><br/>${startStr} – ${endStr} (${dur})`)
+            .html(toHtmlString(tip))
             .style('left', `${event.clientX + 12}px`)
             .style('top', `${event.clientY - 10}px`);
         })

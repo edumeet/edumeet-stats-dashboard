@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import { formatTimeOnly } from '../../utils/formatting.ts';
+import { html, toHtmlString } from '../../utils/safeHtml.ts';
 import type { Tz } from '../../stores/tzStore.ts';
 import type { VisibilitySegment } from '../../utils/tabVisibility.ts';
 
@@ -121,14 +122,11 @@ export function paintVisibilityLane({
         const seconds = ((segment.end - segment.start) / 1000).toFixed(1);
         const state = segment.visible ? 'in the foreground' : 'in the background';
         // An open-ended stretch is the capture stopping, not the tab returning.
-        const tail = segment.openEnded ? '<br/>still hidden when the capture stopped' : '';
+        const tail = segment.openEnded ? html`<br/>still hidden when the capture stopped` : null;
+        const tip = html`<strong>Tab ${state}</strong><br/>${formatTimeOnly(segment.start, tz)} – ${formatTimeOnly(segment.end, tz)}<br/>${seconds}s${tail}`;
         tooltipDiv
           .style('opacity', '1')
-          .html(
-            `<strong>Tab ${state}</strong><br/>` +
-              `${formatTimeOnly(segment.start, tz)} – ${formatTimeOnly(segment.end, tz)}<br/>` +
-              `${seconds}s${tail}`,
-          )
+          .html(toHtmlString(tip))
           .style('left', `${event.clientX + 12}px`)
           .style('top', `${event.clientY - 10}px`);
       })

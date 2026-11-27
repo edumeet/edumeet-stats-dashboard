@@ -39,6 +39,24 @@ export function isKnownRecordingClientEventType(
   return (Object.values(RecordingClientEventTypes) as string[]).includes(type);
 }
 
+/** Longest state name or identifier taken from a payload; the real ones are far shorter. */
+const PAYLOAD_STRING_MAX = 256;
+
+/**
+ * A payload field used as a state name or an identifier, if it is one.
+ *
+ * The payload is whatever the client sent, so `payload.takeId as string` is a
+ * wish: the value may be a number, an array or an object. Only a string is
+ * returned, cut to a sane length; anything else counts as absent.
+ */
+export function payloadString(
+  payload: Record<string, unknown> | null | undefined,
+  field: string,
+): string | undefined {
+  const value = payload?.[field];
+  return typeof value === 'string' ? value.slice(0, PAYLOAD_STRING_MAX) : undefined;
+}
+
 /** Timeline / chart color for STREAM_RECORDING_ID_CHANGED markers. */
 export const STREAM_RECORDING_ID_COLOR = '#ec4899';
 
@@ -56,7 +74,7 @@ export function extractStreamRecordingIdEvents(
     .filter((e) => e.type === RecordingClientEventTypes.STREAM_RECORDING_ID_CHANGED)
     .map((e) => ({
       timestamp: e.timestamp.getTime(),
-      newId: e.payload.newId != null ? String(e.payload.newId) : undefined,
-      source: e.payload.source != null ? String(e.payload.source) : undefined,
+      newId: payloadString(e.payload, 'newId'),
+      source: payloadString(e.payload, 'source'),
     }));
 }

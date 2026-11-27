@@ -4,6 +4,8 @@ import * as d3 from 'd3';
 import { useCompareStore } from '../../stores/compareStore.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale } from '../../utils/formatting.ts';
+import { miniChartTooltip } from '../../utils/miniChartHelpers.ts';
+import { toHtmlString, type SafeHtml } from '../../utils/safeHtml.ts';
 import { ScreenshotButton } from '../sections/ScreenshotButton.tsx';
 import styles from './MiniChart.module.css';
 
@@ -32,7 +34,7 @@ export interface MiniChartRegion {
   end: number;
   color?: string;
   /** Issue payload / episode details shown when hovering the marker. */
-  tooltipHtml?: string;
+  tooltipHtml?: SafeHtml;
 }
 
 export interface MiniChartProps {
@@ -51,15 +53,6 @@ export interface MiniChartProps {
   compact?: boolean;
   /** Time windows to shade (issue episodes). */
   regions?: MiniChartRegion[];
-}
-
-/** Notes come from the client verbatim, so they are escaped before injection. */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 const DEFAULT_COLOR = 'var(--accent)';
@@ -379,27 +372,24 @@ export function MiniChart({
       }
 
       const timeStr = d3TimeFormat('%H:%M:%S.%L', tz)(new Date(time));
-      const valueLines = hits
-        .map(({ s, d }) => `<span style="color:${s.color}">${s.label}: <strong>${formatter(d.value)}</strong></span>`)
-        .join('<br/>');
-      // Point notes (score reasons) are per-series; de-duplicate so a reason
-      // shared across series is not repeated.
-      const noteLines = Array.from(
-        new Set(hits.flatMap(({ d }) => d.notes ?? []).filter((n) => n.trim() !== '')),
-      )
-        .map((n) => `<span class="${styles.tooltipNote}">${escapeHtml(n)}</span>`)
-        .join('')
-
+      const notes = hits.flatMap(({ d }) => d.notes ?? []);
       const issueHtml = region?.tooltipHtml;
-      const base = issueHtml
-        ? `${issueHtml}${valueLines ? `<br/>${valueLines}` : ''}`
-        : `${valueLines}<br/><span style="color:var(--text-muted)">${timeStr}</span>`;
-      const html = noteLines ? `${base}<br/>${noteLines}` : base;
+      // The series label, the formatter's output and the notes all go in as
+      // text: a title can carry a client-chosen id, and a formatter is the
+      // caller's and may hand back anything.
+      const tip = miniChartTooltip({
+        readings: hits.map(({ s, d }) => ({ label: s.label, color: s.color, value: formatter(d.value) })),
+        notes,
+        time: timeStr,
+        regionTip: issueHtml,
+        noteClass: styles.tooltipNote,
+      });
+      const hasNotes = notes.some((n) => typeof n === 'string' && n.trim() !== '');
       const rect = container.getBoundingClientRect();
       const anchorY = hits[0] ? yScale(hits[0].d.value) : plotTop + 8;
       tooltipDiv
-        .attr('class', issueHtml || noteLines ? `${styles.tooltip} ${styles.tooltipRich}` : styles.tooltip)
-        .html(html)
+        .attr('class', issueHtml || hasNotes ? `${styles.tooltip} ${styles.tooltipRich}` : styles.tooltip)
+        .html(toHtmlString(tip))
         .style('opacity', '1')
         .style('left', `${rect.left + x + 12}px`)
         .style('top', `${rect.top + anchorY - 10}px`);

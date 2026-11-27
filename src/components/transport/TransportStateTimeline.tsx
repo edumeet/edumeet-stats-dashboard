@@ -4,6 +4,7 @@ import * as d3 from 'd3';
 import type { ClientSample } from '../../schema/ClientSample.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale, formatDuration } from '../../utils/formatting.ts';
+import { html, joinHtml, textLines, toHtmlString, type SafeHtml } from '../../utils/safeHtml.ts';
 import { ScreenshotButton } from '../sections/ScreenshotButton.tsx';
 import { paintIssueLane } from '../charts/paintIssueLane.ts';
 import {
@@ -52,10 +53,6 @@ const TRANSPORT_TYPE_NOTE: Record<string, string> = {
   pipe: 'Pipe transport, router to router: SCTP only, no ICE or DTLS.',
   direct: 'Direct transport: no ICE, DTLS or SCTP — it moves packets between the router and the application.',
 };
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 
 /**
  * A transport across all of its state machines at once.
@@ -125,10 +122,10 @@ export function TransportStateTimeline({
         .attr('class', styles.tooltip)
         .style('opacity', '0');
 
-      const showTip = (event: MouseEvent, html: string) => {
+      const showTip = (event: MouseEvent, tip: SafeHtml) => {
         tooltipDiv
           .style('opacity', '1')
-          .html(html)
+          .html(toHtmlString(tip))
           .style('left', `${event.clientX + 12}px`)
           .style('top', `${event.clientY - 10}px`);
       };
@@ -182,35 +179,32 @@ export function TransportStateTimeline({
           const x2 = xScale(new Date(seg.end));
           const w = Math.max(2, x2 - x1);
           const entry = enteredBy.get(seg.start);
-          const durationLabel = formatDuration(seg.end - seg.start);
-          const detail = seg.detail ? `<br/>${escapeHtml(seg.detail).replace(/\n/g, '<br/>')}` : '';
+          const time = d3TimeFormat('%H:%M:%S', tz);
+          const lines = [
+            html`<strong style="color:${seg.color}">${seg.state}</strong> <span style="color:var(--text-muted)">· ${seg.machineLabel ?? lane.label} (${(seg.source ?? lane.source) === 'sfu' ? 'SFU' : 'browser'})</span>`,
+          ];
+          if (seg.attribute) {
+            lines.push(html`<span style="color:var(--text-muted);font-size:0.9em">${seg.attribute}</span>`);
+          }
+          lines.push(
+            html`${time(new Date(seg.start))} – ${time(new Date(seg.end))} <span style="color:var(--text-muted)">(${formatDuration(seg.end - seg.start)})</span>`,
+          );
+          if (entry) {
+            const held = entry.heldMs > 0
+              ? html` <span style="color:var(--text-muted)">after ${formatDuration(entry.heldMs)}</span>`
+              : null;
+            lines.push(
+              html`<span style="color:${entry.fromColor}">${entry.from}</span> <span style="color:var(--text-muted)">→</span> <strong style="color:${entry.color}">${entry.to}</strong>${held}`,
+            );
+          }
+          if (seg.detail) lines.push(textLines(seg.detail.split('\n')));
           // The opening stretch is mediasoup's documented starting state, not
           // something the sample recorded. Saying so keeps an inference from
           // reading as an observation.
-          const initialNote = seg.initial
-            ? '<br/><span style="color:var(--text-muted)">starting state — no transition recorded before this</span>'
-            : '';
-          const cameFrom = entry
-            ? `<br/><span style="color:${entry.fromColor}">${escapeHtml(entry.from)}</span>` +
-              ` <span style="color:var(--text-muted)">→</span> ` +
-              `<strong style="color:${entry.color}">${escapeHtml(entry.to)}</strong>` +
-              (entry.heldMs > 0
-                ? ` <span style="color:var(--text-muted)">after ${escapeHtml(formatDuration(entry.heldMs))}</span>`
-                : '')
-            : '';
-          const html =
-            `<strong style="color:${seg.color}">${escapeHtml(seg.state)}</strong>` +
-            ` <span style="color:var(--text-muted)">· ${escapeHtml(seg.machineLabel ?? lane.label)}` +
-            ` (${(seg.source ?? lane.source) === 'sfu' ? 'SFU' : 'browser'})</span>` +
-            (seg.attribute
-              ? `<br/><span style="color:var(--text-muted);font-size:0.9em">${escapeHtml(seg.attribute)}</span>`
-              : '') +
-            `<br/>${d3TimeFormat('%H:%M:%S', tz)(new Date(seg.start))}` +
-            ` – ${d3TimeFormat('%H:%M:%S', tz)(new Date(seg.end))}` +
-            ` <span style="color:var(--text-muted)">(${durationLabel})</span>` +
-            cameFrom +
-            detail +
-            initialNote;
+          if (seg.initial) {
+            lines.push(html`<span style="color:var(--text-muted)">starting state — no transition recorded before this</span>`);
+          }
+          const tip = joinHtml(lines);
 
           svg
             .append('rect')
@@ -231,9 +225,9 @@ export function TransportStateTimeline({
                 .attr('opacity', '1')
                 .attr('stroke', 'var(--text)')
                 .attr('stroke-width', 1);
-              showTip(event, html);
+              showTip(event, tip);
             })
-            .on('mousemove', (event: MouseEvent) => showTip(event, html))
+            .on('mousemove', (event: MouseEvent) => showTip(event, tip))
             .on('mouseleave', function () {
               d3.select(this).attr('opacity', '0.88').attr('stroke', 'none');
               hideTip();
@@ -287,11 +281,12 @@ export function TransportStateTimeline({
       // across the chart any more.
       for (const marker of m.markers) {
         const x = xScale(new Date(marker.timestamp));
-        const html =
-          `<strong style="color:${marker.color}">${escapeHtml(marker.label)}</strong>` +
-          ` <span style="color:var(--text-muted)">· ${marker.source === 'sfu' ? 'SFU' : 'browser'}</span>` +
-          `<br/>${d3TimeFormat('%H:%M:%S.%L', tz)(new Date(marker.timestamp))}` +
-          (marker.detail.length ? `<br/>${marker.detail.map(escapeHtml).join('<br/>')}` : '');
+        const lines = [
+          html`<strong style="color:${marker.color}">${marker.label}</strong> <span style="color:var(--text-muted)">· ${marker.source === 'sfu' ? 'SFU' : 'browser'}</span>`,
+          html`${d3TimeFormat('%H:%M:%S.%L', tz)(new Date(marker.timestamp))}`,
+        ];
+        if (marker.detail.length) lines.push(textLines(marker.detail));
+        const tip = joinHtml(lines);
 
         // A pin on the top rail, and nothing drawn across the lanes. The dashed
         // rule these used to carry ran the full height of the chart for every
@@ -323,9 +318,9 @@ export function TransportStateTimeline({
         group
           .on('mouseenter', (event: MouseEvent) => {
             pin.attr('r', 4.75);
-            showTip(event, html);
+            showTip(event, tip);
           })
-          .on('mousemove', (event: MouseEvent) => showTip(event, html))
+          .on('mousemove', (event: MouseEvent) => showTip(event, tip))
           .on('mouseleave', () => {
             pin.attr('r', 3);
             hideTip();

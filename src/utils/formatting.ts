@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import { useTimezoneStore, type Tz } from '../stores/tzStore.ts';
+import { html, type SafeHtml } from './safeHtml.ts';
 
 /** Read the current timezone preference without subscribing. Used as the
  * default when a caller doesn't pass `tz` explicitly. Any caller inside a
@@ -193,10 +194,11 @@ export function producerOverviewHoverHtml(producer: {
   id: string;
   kind: string;
   label?: string | null;
-}): string {
-  const idHtml = `<span style="font-family:ui-monospace,monospace">${producer.id}</span>`;
+}): SafeHtml {
+  const idHtml = html`<span style="font-family:ui-monospace,monospace">${producer.id}</span>`;
   if (producer.kind !== 'video' && producer.kind !== 'audio') return idHtml;
-  const label = producer.label?.trim();
+  // The label is whatever the client named its track; it need not be a string.
+  const label = typeof producer.label === 'string' ? producer.label.trim() : '';
   if (!label) return idHtml;
-  return `${idHtml} <span style="color:var(--text-muted)">(${label})</span>`;
+  return html`${idHtml} <span style="color:var(--text-muted)">(${label})</span>`;
 }

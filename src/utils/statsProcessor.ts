@@ -809,7 +809,8 @@ export function processWebRTCStats(clientStats: ClientSample[] | unknown): Proce
     }
 
     for (const ev of sample.clientEvents ?? []) {
-      if (!ev.type) continue;
+      // The type is matched and shown as a name; one that is not a string is no name.
+      if (typeof ev.type !== 'string' || !ev.type) continue;
       const payload = parseClientEventPayload(ev);
       const recordingEv: ClientRecordingEvent = {
         timestamp: ev.timestamp != null ? new Date(ev.timestamp) : timestamp,

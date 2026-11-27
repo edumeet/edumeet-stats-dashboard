@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
 import type { CallSession } from '../../api/types.ts';
 import { formatHMS, d3TimeFormat, d3TimeScale } from '../../utils/formatting.ts';
+import { html, toHtmlString } from '../../utils/safeHtml.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { IdBadge } from '../sections/IdBadge.tsx';
 import styles from './CallTimeline.module.css';
@@ -111,12 +112,8 @@ export function CallTimeline({ session, onClientClick }: CallTimelineProps) {
         .style('cursor', 'pointer')
         .on('mouseenter', function (event: MouseEvent) {
           d3.select(this).attr('opacity', '1').attr('stroke', '#fff').attr('stroke-width', '1');
-          tooltip
-            .style('opacity', '1')
-            .html(
-              `<strong>${clientLabelMap.get(cid) || cid}</strong> <span style="opacity:0.6;font-size:10px">${cid}</span><br/>` +
-                `${formatHMS(joined, tz)} – ${formatHMS(left, tz)}`,
-            );
+          const tip = html`<strong>${clientLabelMap.get(cid) || cid}</strong> <span style="opacity:0.6;font-size:10px">${cid}</span><br/>${formatHMS(joined, tz)} – ${formatHMS(left, tz)}`;
+          tooltip.style('opacity', '1').html(toHtmlString(tip));
           tooltip.style('left', event.clientX + 12 + 'px').style('top', event.clientY - 10 + 'px');
         })
         .on('mousemove', function (event: MouseEvent) {

@@ -4,6 +4,7 @@ import type { IceSelectedPairValue } from '../utils/statsTypes.ts';
 import type { ConsumerData } from '../components/charts/StackedConsumerTimeline.tsx';
 import type { TimelineOverlay, TimelinePointMarker } from '../components/charts/Timeline.tsx';
 import type { IssueLaneItem } from '../utils/issueTimelinePlacement.ts';
+import type { SafeHtml } from '../utils/safeHtml.ts';
 
 export type PinnedChartType = 'minichart' | 'quality-timeline' | 'timeline' | 'stacked-consumer-timeline' | 'cpu-chart';
 
@@ -20,7 +21,7 @@ export interface PinnedChart {
     formatter?: (v: number) => string;
     color?: string;
     yDomain?: [number, number];
-    regions?: { start: number; end: number; color?: string; tooltipHtml?: string }[];
+    regions?: { start: number; end: number; color?: string; tooltipHtml?: SafeHtml }[];
   };
 
   qualityTimelineProps?: {
