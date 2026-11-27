@@ -477,11 +477,20 @@ nothing is served outside it. `AUTH_PUBLIC_URL` must end in the same path
 log and answers 503. The proxy in front passes the path on as it is:
 
 ```nginx
-location /stats {
+# Exactly /stats and what lies below it. A plain `location /stats` would also
+# take /statistics, which on an eduMEET host is somebody's meeting room.
+location = /stats {
+    proxy_pass http://stats-dashboard:3000;
+    proxy_set_header Host $host;
+}
+location ^~ /stats/ {
     proxy_pass http://stats-dashboard:3000;
     proxy_set_header Host $host;
 }
 ```
+
+On an eduMEET host the sub-path takes one room name away: a room called
+`stats` can no longer be opened.
 
 ### Health
 
