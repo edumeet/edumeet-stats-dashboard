@@ -473,7 +473,9 @@ await check('the middleware runs for every path except the build\'s static files
   const source = readFileSync(join(ROOT, 'middleware.ts'), 'utf8');
   const matcher = source.match(/matcher:\s*\[([^\]]*)\]/);
   assert.ok(matcher, 'no matcher found');
-  assert.equal(matcher[1].trim(), "'/((?!_next/static/).*)'");
+  // The root is listed by itself: under a sub-path the second pattern does not
+  // match the home page, whose address has no slash after the sub-path.
+  assert.equal(matcher[1].trim(), "'/', '/((?!_next/static/).*)'");
 });
 
 console.log(`\n${passed} checks passed`);
