@@ -13,21 +13,27 @@
  *      the columns off the first row alone drops those from the export
  *      entirely — the file looks complete and is not. The header is the union
  *      of every key in every row.
- *   2. **Quoting.** A candidate address, a codec's `sdpFmtpLine` or an ICE URL
- *      can carry commas, quotes and newlines. RFC 4180 rules, applied to every
- *      value rather than to the ones that look risky.
- *   3. **Formula injection.** Text beginning `=`, `+` or `@` is executed as a
- *      formula by Excel and Sheets on open. Numbers are left exactly as they
- *      are — a leading `-` is a negative reading far more often than it is an
- *      attack — so only non-numeric text is defused.
+ *   2. **Cell boundaries.** A candidate address, a codec's `sdpFmtpLine` or an
+ *      ICE URL can carry commas, semicolons, quotes, tabs and line breaks, and
+ *      the text does not only meet readers that follow RFC 4180: a clipboard
+ *      paste is split on TAB and line breaks, and a spreadsheet in many locales
+ *      splits a `.csv` on `;`. So tabs and line breaks are taken out of the
+ *      text altogether, and commas, semicolons and quotes are quoted.
+ *   3. **Formula injection.** Text beginning `=`, `+`, `-` or `@` is executed
+ *      as a formula by Excel, LibreOffice and Sheets. Every field name and
+ *      value in a sample is chosen by the browser that sent it, so all text is
+ *      defused, headers included. Genuine numbers are left exactly as they
+ *      are: a negative reading keeps its sign.
  *
- * This is deliberately separate from `metricSeriesExport.ts`, which builds the
- * *compact* clipboard CSV: one column per charted metric, `t` in seconds, and a
- * title line above the header. That shape is for pasting a chart into a
- * message. This one is for analysis, so it carries every field the browser
- * reported and real timestamps, and its first line is the column header with
- * nothing above it — a title line would land in a spreadsheet as row 1 and push
- * every column name into the data.
+ * Points 2 and 3 live in one function, `escapeCsvValue`, and every cell of
+ * every CSV this app produces goes through it — including the ones written by
+ * `metricSeriesExport.ts`, which builds the *compact* clipboard CSV: one column
+ * per charted metric, `t` in seconds, and a title line above the header. The
+ * two shapes stay separate. That one is for pasting a chart into a message.
+ * This one is for analysis, so it carries every field the browser reported and
+ * real timestamps, and its first line is the column header with nothing above
+ * it — a title line would land in a spreadsheet as row 1 and push every column
+ * name into the data.
  */
 
 /** A single sample: one row of the export. */
@@ -82,47 +88,90 @@ function applyColumnOrder(columns: string[], leading: string[] | undefined): str
 }
 
 /**
- * Render one value as text, before quoting.
+ * Render one non-numeric value as text, before it is made safe.
  *
  * `null` and `undefined` both become empty rather than the strings "null" and
  * "undefined": a missing reading is missing, and a spreadsheet will not average
  * an empty cell into a column.
  */
-function renderValue(value: unknown): string {
+function renderText(value: unknown): string {
   if (value == null) return '';
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
   if (typeof value === 'string') return value;
-  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : value.toISOString();
   try {
-    return JSON.stringify(value);
+    // `undefined` for what JSON cannot express (a function, a symbol).
+    return JSON.stringify(value) ?? String(value);
   } catch {
     return String(value);
   }
 }
 
-/** True when a spreadsheet would execute the text rather than display it. */
-function looksLikeFormula(text: string): boolean {
-  return /^[=+@\t\r]/.test(text);
-}
+/**
+ * Anything that ends a cell or a row for some reader: TAB, CR, LF and the rest
+ * of C0, DEL, C1 (NEL among them) and the Unicode line and paragraph
+ * separators.
+ */
+// eslint-disable-next-line no-control-regex
+const CONTROL_RUN = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 
-/** RFC 4180 quoting, plus the formula guard. */
+/**
+ * What may sit in front of a formula without stopping a spreadsheet from
+ * seeing it: whitespace and zero-width characters, which some importers trim,
+ * and a double quote, which an importer consumes as the opening of a quoted
+ * cell.
+ */
+const SKIPPED = '[\\s"\\u200b-\\u200d\\u2060]*';
+
+/** `=`, `+`, `-`, `@`, and the full-width forms East Asian locales accept. */
+const TRIGGER = '[=+\\-@\\uff1d\\uff0b\\uff0d\\uff20]';
+
+const FORMULA_AT_START = new RegExp(`^${SKIPPED}${TRIGGER}`);
+const FORMULA_AFTER_SEMICOLON = new RegExp(`;(?=${SKIPPED}${TRIGGER})`, 'g');
+
+/**
+ * One cell, safe to hand to a spreadsheet. The only place in the app that
+ * decides how a value becomes CSV text: data cells, header cells and title
+ * lines all come through here.
+ *
+ * A finite `number` is written as it is. Everything else is text, and text is
+ * made to hold for a reader that splits on commas, on semicolons or on tabs:
+ *
+ *   - Control characters become a space. Quoting does not protect a TAB or a
+ *     line break from a clipboard paste, so they cannot stay.
+ *   - Text a spreadsheet would run gets a leading apostrophe. Excel,
+ *     LibreOffice and Sheets all take the cell as text then — some show the
+ *     apostrophe and some hide it — and the value stays readable in a
+ *     plain-text diff. The check looks past leading whitespace because some
+ *     importers trim it first.
+ *   - A `;` cannot be removed (an `sdpFmtpLine` is full of them) and quoting
+ *     only hides it from a reader that recognises the quotes — a spreadsheet
+ *     honours them at the start of a cell only, and in a semicolon locale a
+ *     cell starts at the last `;`, not at the last comma. So the piece after a
+ *     `;` gets the apostrophe too when it would run.
+ *   - RFC 4180 quoting for commas, semicolons, quotes and outer whitespace.
+ *
+ * What this cannot do is defuse a number: a row whose *first* cell is a
+ * negative number begins with `-`, and a reader that takes the whole line as
+ * one cell sees that sign first.
+ */
 export function escapeCsvValue(value: unknown): string {
-  let text = renderValue(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+
+  let text = renderText(value).replace(CONTROL_RUN, ' ');
   if (text === '') return '';
 
-  // A leading apostrophe defuses it: spreadsheets strip it on display, and the
-  // value stays readable in a plain-text diff.
-  if (typeof value !== 'number' && looksLikeFormula(text)) text = `'${text}`;
+  text = text.replace(FORMULA_AFTER_SEMICOLON, ";'");
+  if (FORMULA_AT_START.test(text)) text = `'${text}`;
 
-  const mustQuote =
-    text.includes(',') ||
-    text.includes('"') ||
-    text.includes('\n') ||
-    text.includes('\r') ||
-    text !== text.trim();
+  const mustQuote = /[,;"]/.test(text) || text !== text.trim();
 
   return mustQuote ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+/** One line of cells, comma-separated, each through `escapeCsvValue`. */
+export function toCsvLine(values: unknown[]): string {
+  return values.map(escapeCsvValue).join(',');
 }
 
 /**
@@ -180,16 +229,16 @@ export function toCsv(rows: CsvRow[] | null | undefined, options: ToCsvOptions =
     if (hasTimestamp && column === timestampField) header.push(isoColumnName);
   }
 
-  const lines: string[] = [header.map(escapeCsvValue).join(',')];
+  const lines: string[] = [toCsvLine(header)];
 
   for (const row of rows) {
-    const cells: string[] = [];
+    const cells: unknown[] = [];
     for (const column of columns) {
       const value = row?.[column];
-      cells.push(escapeCsvValue(value));
-      if (hasTimestamp && column === timestampField) cells.push(escapeCsvValue(toIso(value)));
+      cells.push(value);
+      if (hasTimestamp && column === timestampField) cells.push(toIso(value));
     }
-    lines.push(cells.join(','));
+    lines.push(toCsvLine(cells));
   }
 
   return lines.join('\r\n');

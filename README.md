@@ -839,12 +839,39 @@ There are two CSV shapes in the codebase and they are not interchangeable:
   `qualityLimitationReason` before the encoder is under pressure. The header is
   the **union of every key in every row**, never the first row's keys, or the
   copy looks complete while missing columns.
-- **Quoting.** Candidate URLs and `sdpFmtpLine` carry commas and quotes; RFC
-  4180 rules are applied to every value.
-- **Formula injection.** Text beginning `=`, `+` or `@` is executed by Excel and
-  Sheets on paste, so non-numeric text is defused with a leading apostrophe.
-  Numbers are left alone — a leading `-` is a negative reading far more often
-  than an attack, and blanket-escaping would mangle every one of them.
+- **Cell boundaries.** Candidate URLs and `sdpFmtpLine` carry commas,
+  semicolons and quotes, and nothing stops a value from carrying a TAB or a
+  line break.
+- **Formula injection.** Text beginning `=`, `+`, `-` or `@` is executed by
+  Excel, LibreOffice and Sheets.
+
+The last two are handled in one place for both shapes: `escapeCsvValue` in
+`csvExport.ts` writes **every cell** — values, column names, and the compact
+shape's title line. Every field name and value in a sample was chosen by the
+browser that sent it, so none of them is trusted, and the text is made to hold
+whether it is read on commas (a CSV import), on semicolons (a `.csv` opened in
+a locale where `;` is the list separator) or on tabs (a paste):
+
+- A finite `number` is written exactly as it is, negative readings included.
+  `NaN` and `Infinity` become an empty cell, as do `null` and `undefined`.
+- Everything else is text. Control characters in it — TAB, CR, LF and the rest —
+  become a single space, because quoting does not stop a paste from splitting
+  on them.
+- Text that starts with `=`, `+`, `-` or `@`, with or without whitespace in
+  front, gets a leading apostrophe, which makes a spreadsheet treat the cell as
+  text. That includes a *string* such as `"-5"`; only a real number is trusted
+  to be one.
+- The piece after a `;` gets the same apostrophe when it would run
+  (`a;=1+1` is written `a;'=1+1`). The semicolon itself has to stay, and a
+  spreadsheet that splits on it honours quotes only at the start of a cell.
+- A cell containing a comma, a semicolon, a double quote, or leading or
+  trailing whitespace is wrapped in double quotes, with inner quotes doubled.
+
+One thing this cannot cover: a line whose *first* cell is a negative number
+starts with `-`, and a reader that takes the whole line as a single cell sees
+the sign first. The compact shape leads with `t`, which is never negative; the
+other leads with the timestamp unless a caller asks for different leading
+columns.
 
 Rows are gathered on click, not on render: a series runs to thousands of rows
 and most subsections are never exported. A producer's simulcast layers each copy
@@ -1155,7 +1182,7 @@ npm run test:transport-timeline # ICE / DTLS / SCTP lanes from router + client h
 npm run test:score-explanation  # the "Why this score" account, both wire vintages
 npm run test:call-summary       # merging per-SFU call summaries into one
 npm run test:tab-visibility     # backgrounded stretches from the visibility event
-npm run test:csv                # the subsection CSV: column union, quoting, injection
+npm run test:csv                # both CSV copies: column union, cell boundaries, injection
 npm run test:sample-reasons     # re-aggregating score reasons from their components
 npm run test:router-entities    # producer / consumer lanes from a router sample
 npm run test:call-dashboard     # the call page's model: loaded clients, facts, quality chart
