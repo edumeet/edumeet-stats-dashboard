@@ -40,6 +40,12 @@ COPY . .
 ARG NEXT_PUBLIC_API_BASE_URL=""
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 
+# The other one: a sub-path to serve under (`/stats`), for an installation with
+# one host name. Empty serves at the root. The paths of the scripts a page loads
+# are written by the build, so this cannot be changed at `docker run`.
+ARG NEXT_PUBLIC_BASE_PATH=""
+ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
+
 # Typecheck and the test suite run here so a broken build never becomes an
 # image. Both are offline — the tests read fixtures, not the network.
 RUN npm run typecheck && npm test && npm run build
@@ -58,8 +64,13 @@ LABEL org.opencontainers.image.title="observertc-stats" \
       org.opencontainers.image.vendor="ObserveRTC" \
       org.opencontainers.image.url="https://observertc.org/"
 
+# Carried into the runtime stage for the healthcheck below, which has to ask
+# under the same sub-path the build serves.
+ARG NEXT_PUBLIC_BASE_PATH=""
+
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH} \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
@@ -140,6 +151,6 @@ EXPOSE 3000
 # because an ECS/EKS task using an instance role sets neither key and is
 # correct; failing on it would restart-loop a container that was serving fine.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 || exit 1
+  CMD wget -qO- "http://127.0.0.1:${PORT}${NEXT_PUBLIC_BASE_PATH}/api/health" >/dev/null 2>&1 || exit 1
 
 CMD ["node", "server.js"]

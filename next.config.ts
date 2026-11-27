@@ -1,4 +1,7 @@
 import type { NextConfig } from 'next';
+import { normalizeBasePath } from './src/lib/basePath.ts';
+
+const basePath = normalizeBasePath(process.env.NEXT_PUBLIC_BASE_PATH);
 
 const nextConfig: NextConfig = {
   // src/pages/ holds component files, not Next.js Pages Router pages
@@ -14,9 +17,18 @@ const nextConfig: NextConfig = {
    */
   output: 'standalone',
 
+  /**
+   * Serve under a sub-path (`/stats`) instead of the root, for an installation
+   * with one host name. A build-time setting: see `src/lib/basePath.ts`.
+   * Pages, links, static files and the API all move under it, and nothing is
+   * served outside it.
+   */
+  ...(basePath ? { basePath } : {}),
+
   // The image is built once and run anywhere, so the version has to come from
   // the build rather than from a file read at runtime.
   env: {
+    NEXT_PUBLIC_BASE_PATH: basePath,
     NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version ?? '0.0.0',
   },
 

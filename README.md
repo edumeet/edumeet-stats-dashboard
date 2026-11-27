@@ -455,11 +455,33 @@ is `http://localhost:9000`. Signing against the server's own endpoint hands the
 browser a host it cannot resolve. Set this when the two names differ, leave it
 unset when they do not.
 
-**`NEXT_PUBLIC_API_BASE_URL` is the one setting that is not runtime-configurable.**
-`NEXT_PUBLIC_*` values are inlined into the browser bundle at build time, so
-changing it needs a rebuild (`--build-arg`). Its default — empty, meaning the
-same origin as the page — is what almost every deployment wants, which is why it
-is the default rather than something to configure.
+**`NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_BASE_PATH` are the two settings
+that are not runtime-configurable.** `NEXT_PUBLIC_*` values are inlined into the
+browser bundle at build time, so changing one needs a rebuild (`--build-arg`).
+The default of the first — empty, meaning the same origin as the page — is what
+almost every deployment wants, which is why it is the default rather than
+something to configure.
+
+### Under a sub-path
+
+An installation with one host name can serve the dashboard under a path of it,
+next to its other services:
+
+```bash
+docker build --build-arg NEXT_PUBLIC_BASE_PATH=/stats -t observertc-stats .
+```
+
+Pages, static files, the API and the sign-in then all live under `/stats`, and
+nothing is served outside it. `AUTH_PUBLIC_URL` must end in the same path
+(`https://meet.example.org/stats`); if it does not, the container says so in its
+log and answers 503. The proxy in front passes the path on as it is:
+
+```nginx
+location /stats {
+    proxy_pass http://stats-dashboard:3000;
+    proxy_set_header Host $host;
+}
+```
 
 ### Health
 

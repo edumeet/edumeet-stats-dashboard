@@ -26,7 +26,15 @@ import {
   readSessionToken,
   setCookie,
 } from '../src/lib/auth/session.ts';
+import { BASE_PATH, normalizeBasePath, withoutBasePath } from '../src/lib/basePath.ts';
 import { keySegment, keySegments } from '../src/lib/keys.ts';
+
+/**
+ * Settings as a build for the root reads them. Without the second argument the
+ * sub-path of this very build would decide, and a build for `/stats` runs these
+ * tests too.
+ */
+const read = (env: Record<string, string | undefined>, basePath = '') => readAuthConfig(env, basePath);
 
 let passed = 0;
 async function check(name: string, fn: () => void | Promise<void>) {
@@ -46,11 +54,18 @@ const GOOD = {
   OIDC_ALLOW_VALUES: 'stats-viewer',
 };
 
-function settings(env: Record<string, string | undefined> = {}): AuthSettings {
-  const config = readAuthConfig({ ...GOOD, ...env });
+function settings(env: Record<string, string | undefined> = {}, basePath = ''): AuthSettings {
+  const config = read({ ...GOOD, ...env }, basePath);
   assert.equal(config.mode, 'oidc', JSON.stringify(config));
   return config as AuthSettings;
 }
+
+/**
+ * The same settings for the checks that read the real environment. A build
+ * for a sub-path runs these tests with NEXT_PUBLIC_BASE_PATH set, and the
+ * address has to end in that path then.
+ */
+const HERE = { ...GOOD, AUTH_PUBLIC_URL: `${GOOD.AUTH_PUBLIC_URL}${BASE_PATH}` };
 
 const AUTH_KEYS = [...Object.keys(GOOD), 'AUTH_DISABLED', 'AUTH_SESSION_TTL', 'OIDC_SCOPE'];
 
@@ -76,44 +91,44 @@ async function withEnv<T>(env: Record<string, string | undefined>, fn: () => Pro
 console.log('an installation that says nothing is closed');
 
 await check('no settings at all is "misconfigured", not "open"', () => {
-  const config = readAuthConfig({});
+  const config = read({});
   assert.equal(config.mode, 'misconfigured');
   assert.ok(config.mode === 'misconfigured' && config.problems.length >= 5);
 });
 
 await check('every required setting is named when it is missing', () => {
   for (const key of ['AUTH_PUBLIC_URL', 'AUTH_SECRET', 'OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_ALLOW_CLAIM', 'OIDC_ALLOW_VALUES']) {
-    const config = readAuthConfig({ ...GOOD, [key]: '' });
+    const config = read({ ...GOOD, [key]: '' });
     assert.equal(config.mode, 'misconfigured', key);
     assert.ok(config.mode === 'misconfigured' && config.problems.some((p) => p.includes(key)), key);
   }
 });
 
 await check('there is no rule that means "everybody who can sign in"', () => {
-  assert.equal(readAuthConfig({ ...GOOD, OIDC_ALLOW_VALUES: ' , ,' }).mode, 'misconfigured');
-  assert.equal(readAuthConfig({ ...GOOD, OIDC_ALLOW_CLAIM: undefined }).mode, 'misconfigured');
+  assert.equal(read({ ...GOOD, OIDC_ALLOW_VALUES: ' , ,' }).mode, 'misconfigured');
+  assert.equal(read({ ...GOOD, OIDC_ALLOW_CLAIM: undefined }).mode, 'misconfigured');
 });
 
 await check('only the exact word switches the sign-in off', () => {
-  assert.equal(readAuthConfig({ AUTH_DISABLED: 'true' }).mode, 'disabled');
-  assert.equal(readAuthConfig({ AUTH_DISABLED: ' TRUE ' }).mode, 'disabled');
+  assert.equal(read({ AUTH_DISABLED: 'true' }).mode, 'disabled');
+  assert.equal(read({ AUTH_DISABLED: ' TRUE ' }).mode, 'disabled');
   for (const value of ['1', 'yes', 'on', 'false', '']) {
-    assert.equal(readAuthConfig({ AUTH_DISABLED: value }).mode, 'misconfigured', value);
+    assert.equal(read({ AUTH_DISABLED: value }).mode, 'misconfigured', value);
   }
 });
 
 await check('a short secret is refused', () => {
-  assert.equal(readAuthConfig({ ...GOOD, AUTH_SECRET: 'short' }).mode, 'misconfigured');
+  assert.equal(read({ ...GOOD, AUTH_SECRET: 'short' }).mode, 'misconfigured');
 });
 
 await check('plain http is accepted on the machine itself only', () => {
-  assert.equal(readAuthConfig({ ...GOOD, AUTH_PUBLIC_URL: 'http://meet.example.org' }).mode, 'misconfigured');
-  assert.equal(readAuthConfig({ ...GOOD, OIDC_ISSUER: 'http://idp.example.org/realms/dev' }).mode, 'misconfigured');
-  assert.equal(readAuthConfig({ ...GOOD, AUTH_PUBLIC_URL: 'http://localhost:3000' }).mode, 'oidc');
-  assert.equal(readAuthConfig({ ...GOOD, OIDC_ISSUER: 'http://127.0.0.1:8080/realms/dev' }).mode, 'oidc');
-  assert.equal(readAuthConfig({ ...GOOD, AUTH_PUBLIC_URL: 'javascript:alert(1)' }).mode, 'misconfigured');
-  assert.equal(readAuthConfig({ ...GOOD, AUTH_PUBLIC_URL: 'https://user:pw@meet.example.org' }).mode, 'misconfigured');
-  assert.equal(readAuthConfig({ ...GOOD, AUTH_PUBLIC_URL: 'https://meet.example.org/?x=1' }).mode, 'misconfigured');
+  assert.equal(read({ ...GOOD, AUTH_PUBLIC_URL: 'http://meet.example.org' }).mode, 'misconfigured');
+  assert.equal(read({ ...GOOD, OIDC_ISSUER: 'http://idp.example.org/realms/dev' }).mode, 'misconfigured');
+  assert.equal(read({ ...GOOD, AUTH_PUBLIC_URL: 'http://localhost:3000' }).mode, 'oidc');
+  assert.equal(read({ ...GOOD, OIDC_ISSUER: 'http://127.0.0.1:8080/realms/dev' }).mode, 'oidc');
+  assert.equal(read({ ...GOOD, AUTH_PUBLIC_URL: 'javascript:alert(1)' }).mode, 'misconfigured');
+  assert.equal(read({ ...GOOD, AUTH_PUBLIC_URL: 'https://user:pw@meet.example.org' }).mode, 'misconfigured');
+  assert.equal(read({ ...GOOD, AUTH_PUBLIC_URL: 'https://meet.example.org/?x=1' }).mode, 'misconfigured');
 });
 
 await check('the public address keeps its sub-path and loses a trailing slash', () => {
@@ -121,16 +136,44 @@ await check('the public address keeps its sub-path and loses a trailing slash', 
   assert.equal(publicHref(root, '/auth/callback'), 'https://meet.example.org/auth/callback');
   assert.equal(cookiePath(root), '/');
 
-  const sub = settings({ AUTH_PUBLIC_URL: 'https://meet.example.org/stats/' });
+  const sub = settings({ AUTH_PUBLIC_URL: 'https://meet.example.org/stats/' }, '/stats');
   assert.equal(publicHref(sub, '/auth/callback'), 'https://meet.example.org/stats/auth/callback');
   assert.equal(cookiePath(sub), '/stats');
+});
+
+await check('an address whose path is not the one the build serves under is refused', () => {
+  const underRoot = read({ ...GOOD, AUTH_PUBLIC_URL: 'https://meet.example.org/stats' }, '');
+  assert.equal(underRoot.mode, 'misconfigured');
+  assert.ok(underRoot.mode === 'misconfigured' && underRoot.problems.some((p) => p.includes('NEXT_PUBLIC_BASE_PATH')));
+  assert.equal(read({ ...GOOD, AUTH_PUBLIC_URL: 'https://meet.example.org' }, '/stats').mode, 'misconfigured');
+  assert.equal(read({ ...GOOD, AUTH_PUBLIC_URL: 'https://meet.example.org/other' }, '/stats').mode, 'misconfigured');
+  assert.equal(read({ ...GOOD, AUTH_PUBLIC_URL: 'https://meet.example.org/stats' }, '/stats').mode, 'oidc');
+});
+
+await check('the sub-path is one or more plain segments, or nothing', () => {
+  assert.equal(normalizeBasePath(undefined), '');
+  assert.equal(normalizeBasePath(''), '');
+  assert.equal(normalizeBasePath('/'), '');
+  assert.equal(normalizeBasePath('/stats'), '/stats');
+  assert.equal(normalizeBasePath('/stats/'), '/stats');
+  assert.equal(normalizeBasePath('/tools/stats'), '/tools/stats');
+  for (const bad of ['stats', '//evil.example', '/a b', '/a?b', '/a/../b/..', 'https://evil.example', '/a//b', '/"x']) {
+    assert.throws(() => normalizeBasePath(bad), bad);
+  }
+});
+
+await check('a path of the browser is turned into a path of the app', () => {
+  assert.equal(withoutBasePath('/stats/room/call', '/stats'), '/room/call');
+  assert.equal(withoutBasePath('/stats', '/stats'), '/');
+  assert.equal(withoutBasePath('/statsx/room', '/stats'), '/statsx/room');
+  assert.equal(withoutBasePath('/room', ''), '/room');
 });
 
 await check('the session lifetime has a default and a floor', () => {
   assert.equal(settings().sessionTtl, 8 * 60 * 60);
   assert.equal(settings({ AUTH_SESSION_TTL: '3600' }).sessionTtl, 3600);
   for (const value of ['0', '-5', '30', 'soon', '1.5']) {
-    assert.equal(readAuthConfig({ ...GOOD, AUTH_SESSION_TTL: value }).mode, 'misconfigured', value);
+    assert.equal(read({ ...GOOD, AUTH_SESSION_TTL: value }).mode, 'misconfigured', value);
   }
 });
 
@@ -289,7 +332,7 @@ await check('the cookie of a sign-in attempt is not a session, and the other way
 });
 
 await check('over https the cookies are Secure, HttpOnly, Lax and limited to the sub-path', () => {
-  const s = settings({ AUTH_PUBLIC_URL: 'https://meet.example.org/stats' });
+  const s = settings({ AUTH_PUBLIC_URL: 'https://meet.example.org/stats' }, '/stats');
   const names = cookieNames(s);
   assert.equal(names.session, '__Secure-stats_session');
   assert.equal(names.login, '__Secure-stats_login');
@@ -325,7 +368,7 @@ await check('a handler does not run for a caller without a session', async () =>
   let ran = 0;
   const handler = guarded(async () => { ran += 1; return Response.json({ rooms: ['secret'] }); });
 
-  await withEnv(GOOD, async () => {
+  await withEnv(HERE, async () => {
     const res = await handler(request(), undefined);
     assert.equal(res.status, 401);
     assert.doesNotMatch(await res.text(), /secret/);
@@ -338,7 +381,7 @@ await check('a handler does not run for a caller without a session', async () =>
 
 await check('it runs with a session, and its answer is not for shared caches', async () => {
   const handler = guarded(async () => Response.json({ rooms: ['r1'] }));
-  await withEnv(GOOD, async () => {
+  await withEnv(HERE, async () => {
     const token = await createSessionToken(settings(), { sub: 'u1', name: 'Ann' });
     const res = await handler(request(`__Secure-stats_session=${token}`), undefined);
     assert.equal(res.status, 200);
@@ -350,7 +393,7 @@ await check('a session signed for another installation does not open this one', 
   let ran = 0;
   const handler = guarded(async () => { ran += 1; return Response.json({}); });
   const token = await createSessionToken(settings({ AUTH_SECRET: 'the-secret-of-some-other-installation!!' }), { sub: 'u1', name: 'Ann' });
-  await withEnv(GOOD, async () => {
+  await withEnv(HERE, async () => {
     assert.equal((await handler(request(`__Secure-stats_session=${token}`), undefined)).status, 401);
   });
   assert.equal(ran, 0);

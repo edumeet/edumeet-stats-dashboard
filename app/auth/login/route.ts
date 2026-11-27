@@ -1,4 +1,5 @@
 import { publicHref, readAuthConfig } from '@/lib/auth/config';
+import { BASE_PATH } from '@/lib/basePath';
 import { safeReturnTo } from '@/lib/auth/gate';
 import { beginLogin } from '@/lib/auth/oidc';
 import { messagePage } from '@/lib/auth/page';
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   if (auth.mode === 'misconfigured') {
     return messagePage(503, 'Sign-in is not configured', 'The dashboard serves nothing until it is. The server log says which setting is missing.');
   }
-  if (auth.mode === 'disabled') return new Response(null, { status: 302, headers: { Location: '/' } });
+  if (auth.mode === 'disabled') return new Response(null, { status: 302, headers: { Location: `${BASE_PATH}/` } });
 
   const params = new URL(request.url).searchParams;
   const returnTo = safeReturnTo(params.get('returnTo'));
