@@ -72,6 +72,7 @@ export async function GET(request: Request) {
     bucket: config.bucket || null,
     region: config.region,
     forcePathStyle: config.forcePathStyle,
+    samples: config.samplesVia === 'server' ? 'through this server' : 'presigned URLs',
     presignTtlSeconds: config.presignTtl,
     credentials: config.hasCredentials ? 'from environment' : 'from the SDK credential chain',
   };

@@ -75,6 +75,11 @@ export interface StorageConfig {
   region: string;
   forcePathStyle: boolean;
   presignTtl: number;
+  /**
+   * How the browser gets a client's sample file: by a presigned URL straight
+   * from storage, or through this server.
+   */
+  samplesVia: 'presigned' | 'server';
   hasCredentials: boolean;
 }
 
@@ -99,6 +104,8 @@ export function storageConfig(): StorageConfig {
     // is the one that breaks confusingly when it is wrong.
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
     presignTtl: presignTtl(),
+    // Anything but the one word keeps the behaviour installations have today.
+    samplesVia: (process.env.S3_SAMPLES_VIA ?? '').trim().toLowerCase() === 'server' ? 'server' : 'presigned',
     hasCredentials: Boolean(process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY),
   };
 }
@@ -140,6 +147,11 @@ export function storageConfigReport(config = storageConfig()): StorageConfigRepo
     problems.push(
       `S3_PUBLIC_ENDPOINT must start with http:// or https:// (got "${config.publicEndpoint}")`,
     );
+  }
+
+  const samplesVia = (process.env.S3_SAMPLES_VIA ?? '').trim().toLowerCase();
+  if (samplesVia !== '' && samplesVia !== 'server' && samplesVia !== 'presigned') {
+    warnings.push(`S3_SAMPLES_VIA is "${samplesVia}", which is neither "server" nor "presigned"; presigned URLs are used`);
   }
 
   if (!config.hasCredentials) {
@@ -344,13 +356,14 @@ export function announceStorageConfig(): void {
   const problems = storageConfigProblems(config);
 
   console.info(
-    '[storage] endpoint=%s bucket=%s prefix=%s region=%s pathStyle=%s credentials=%s presignTtl=%ss%s',
+    '[storage] endpoint=%s bucket=%s prefix=%s region=%s pathStyle=%s credentials=%s samples=%s presignTtl=%ss%s',
     config.endpoint ?? '(aws default)',
     config.bucket || '(unset)',
     config.prefix || '(root)',
     config.region,
     config.forcePathStyle,
     config.hasCredentials ? 'env' : 'sdk-chain',
+    config.samplesVia,
     config.presignTtl,
     config.publicEndpoint ? ` publicEndpoint=${config.publicEndpoint}` : '',
   );
