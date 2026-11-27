@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import type { IssueLaneItem } from '../../utils/issueTimelinePlacement.ts';
+import { toHtmlString } from '../../utils/safeHtml.ts';
 
 const MIN_BAR_W = 4;
 const TRI_W = 3;
@@ -106,7 +107,7 @@ export function paintIssueLane({
         d3.select(this).attr('opacity', '1');
         tooltipDiv
           .style('opacity', '1')
-          .html(item.tooltipHtml)
+          .html(toHtmlString(item.tooltipHtml))
           .style('left', `${event.clientX + 12}px`)
           .style('top', `${event.clientY - 10}px`);
       })

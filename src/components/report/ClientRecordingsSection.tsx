@@ -26,7 +26,9 @@ import type {
 import {
   RecordingClientEventTypes as R,
   isRecordingClientEventType,
+  payloadString,
 } from '../../schema/RecordingClientEventTypes.ts';
+import { html, tableEntry, toHtmlString, toText, type SafeHtml } from '../../utils/safeHtml.ts';
 const TAKE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6'];
 import styles from './RecordingsSection.module.css';
 
@@ -126,7 +128,7 @@ const STATE_COLORS: Record<string, string> = {
 };
 
 function stateColor(state: string | null | undefined): string {
-  return STATE_COLORS[state ?? ''] ?? '#64748b';
+  return tableEntry(STATE_COLORS, state) ?? '#64748b';
 }
 function takeColor(index: number): string {
   return TAKE_COLORS[index % TAKE_COLORS.length];
@@ -160,13 +162,13 @@ function extractRecorderVersion(events: ClientRecordingEvent[]): string | null {
   const created = events.filter(
     (e) => e.type === R.RECORDING_SESSION_CREATED
       && e.payload.version != null
-      && String(e.payload.version).trim() !== '',
+      && toText(e.payload.version).trim() !== '',
   );
   if (!created.length) return null;
   const latest = created.reduce((a, b) =>
     a.timestamp.getTime() >= b.timestamp.getTime() ? a : b,
   );
-  return String(latest.payload.version).trim();
+  return toText(latest.payload.version).trim();
 }
 
 function trackTransitionFromEvent(
@@ -179,7 +181,7 @@ function trackTransitionFromEvent(
       return { ts, state: 'preroll' };
     }
     if (e.type === R.RECORDING_TRACK_STATE_CHANGED) {
-      const newState = e.payload.newState as string | undefined;
+      const newState = payloadString(e.payload, 'newState');
       if (newState) return { ts, state: newState };
       return null;
     }
@@ -203,7 +205,7 @@ function collapseTrackTransitions(
 /** Non-empty payload.error that is a real message (not null/empty or the literal string "undefined"). */
 function hasMeaningfulPayloadError(err: unknown): boolean {
   if (err == null) return false;
-  const s = String(err).trim();
+  const s = toText(err).trim();
   if (s === '') return false;
   if (s.toLowerCase() === 'undefined') return false;
   return true;
@@ -213,13 +215,13 @@ function hasMeaningfulPayloadError(err: unknown): boolean {
 function payloadIndicatesError(ev: ClientRecordingEvent): boolean {
   if (hasMeaningfulPayloadError(ev.payload.error)) return true;
   if (ev.type === R.RECORDER_SERVICE_STATE_CHANGE) {
-    const a = ev.payload.actualState as string | undefined;
-    const p = ev.payload.prevState as string | undefined;
+    const a = payloadString(ev.payload, 'actualState');
+    const p = payloadString(ev.payload, 'prevState');
     if (a === 'error' || p === 'error') return true;
   }
-  const sessionState = ev.payload.sessionState as string | undefined;
+  const sessionState = payloadString(ev.payload, 'sessionState');
   if (sessionState === 'error') return true;
-  const st = ev.payload.state as string | undefined;
+  const st = payloadString(ev.payload, 'state');
   if (st === 'error') return true;
   return false;
 }
@@ -277,10 +279,10 @@ function buildServiceSegments(
     .filter((e) => e.type === R.RECORDER_SERVICE_STATE_CHANGE)
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   if (!changes.length) return [];
-  const initialState = (changes[0].payload.prevState as string | undefined) ?? 'unknown';
+  const initialState = payloadString(changes[0].payload, 'prevState') ?? 'unknown';
   return buildSegments([
     { ts: globalStart, state: initialState },
-    ...changes.map((e) => ({ ts: e.timestamp.getTime(), state: (e.payload.actualState as string | undefined) ?? 'unknown' })),
+    ...changes.map((e) => ({ ts: e.timestamp.getTime(), state: payloadString(e.payload, 'actualState') ?? 'unknown' })),
   ], globalEnd);
 }
 
@@ -296,7 +298,7 @@ function buildTakeGroups(
   const takeOrder: string[] = [];
   const seenTake = new Set<string>();
   for (const ev of sorted) {
-    const id = ev.payload.takeId as string | undefined;
+    const id = payloadString(ev.payload, 'takeId');
     if (id && !seenTake.has(id)) { seenTake.add(id); takeOrder.push(id); }
   }
 
@@ -307,8 +309,8 @@ function buildTakeGroups(
   const archiveTake = new Map<string, string>(); // archiveId → takeId
   let activeTake: string | null = null;
   for (const ev of sorted) {
-    const tid = ev.payload.takeId as string | undefined;
-    const aid = ev.payload.archiveId as string | undefined;
+    const tid = payloadString(ev.payload, 'takeId');
+    const aid = payloadString(ev.payload, 'archiveId');
     if (tid) activeTake = tid;
     if (aid && !archiveTake.has(aid) && activeTake) archiveTake.set(aid, activeTake);
   }
@@ -319,7 +321,7 @@ function buildTakeGroups(
     // event list but must still drive the timeline rows.
     const sessionSegments = buildSegments(
       sorted
-        .filter((e) => SESSION_EVENT_TO_STATE[e.type] && (e.payload.takeId as string | undefined) === takeId)
+        .filter((e) => SESSION_EVENT_TO_STATE[e.type] && payloadString(e.payload, 'takeId') === takeId)
         .map((e) => ({ ts: e.timestamp.getTime(), state: SESSION_EVENT_TO_STATE[e.type] })),
       globalEnd,
     );
@@ -330,8 +332,8 @@ function buildTakeGroups(
     // • includes archive-track events that have no takeId via archiveTake inference
     const takeEvents = sorted.filter((e) => {
       if (SERVICE_ONLY_EVENTS.has(e.type)) return false;
-      if ((e.payload.takeId as string | undefined) === takeId) return true;
-      const aid = e.payload.archiveId as string | undefined;
+      if (payloadString(e.payload, 'takeId') === takeId) return true;
+      const aid = payloadString(e.payload, 'archiveId');
       return aid ? archiveTake.get(aid) === takeId : false;
     });
 
@@ -339,8 +341,8 @@ function buildTakeGroups(
     const seenA = new Set<string>();
     const archiveSrc = new Map<string, string>();
     for (const ev of takeEvents) {
-      const aid = ev.payload.archiveId as string | undefined;
-      const src = ev.payload.source    as string | undefined;
+      const aid = payloadString(ev.payload, 'archiveId');
+      const src = payloadString(ev.payload, 'source');
       if (aid && !seenA.has(aid)) { seenA.add(aid); archiveOrder.push(aid); }
       if (aid && src) archiveSrc.set(aid, src);
     }
@@ -348,7 +350,7 @@ function buildTakeGroups(
     const tracks: TrackData[] = archiveOrder.map((archiveId) => {
       const transitions = collapseTrackTransitions(
         takeEvents
-          .filter((e) => e.payload.archiveId === archiveId)
+          .filter((e) => payloadString(e.payload, 'archiveId') === archiveId)
           .map((e) => trackTransitionFromEvent(e, useRecorderV31))
           .filter((t): t is { ts: number; state: string } => t != null),
       );
@@ -424,8 +426,8 @@ function buildD3Chart(
 
   const tooltip = d3.select(container)
     .append('div').attr('class', styles.tooltip).style('opacity', '0');
-  const showTip = (ev: MouseEvent, html: string) =>
-    tooltip.html(html).style('opacity', '1')
+  const showTip = (ev: MouseEvent, tip: SafeHtml) =>
+    tooltip.html(toHtmlString(tip)).style('opacity', '1')
       .style('left', `${ev.clientX + 12}px`).style('top', `${ev.clientY - 10}px`);
   const moveTip = (ev: MouseEvent) =>
     tooltip.style('left', `${ev.clientX + 12}px`).style('top', `${ev.clientY - 10}px`);
@@ -474,7 +476,7 @@ function buildD3Chart(
     lbl.text(row.label);
     // Hover area over the label — shows full ID tooltip
     if (row.labelTitle) {
-      const tipHtml = `<span style="font-family:ui-monospace,monospace;word-break:break-all">${row.labelTitle}</span>`;
+      const tipHtml = html`<span style="font-family:ui-monospace,monospace;word-break:break-all">${row.labelTitle}</span>`;
       svg.append('rect')
         .attr('x', 0).attr('y', yOff + 1)
         .attr('width', MARGIN.left - 8).attr('height', row.rowH - 2)
@@ -516,10 +518,11 @@ function buildD3Chart(
         const fillOp   = isErrSeg ? 1 : 0.82;
         const errStroke = isErrSeg ? (isDark ? '#fca5a5' : '#b91c1c') : null;
 
-        const tip =
-          `<strong style="color:${seg.color}">${seg.state}</strong><br/>` +
-          `${formatHMS(seg.start, tz as never)}` +
-          (seg.end > seg.start ? ` – ${formatHMS(seg.end, tz as never)}<br/>${formatDuration(seg.end - seg.start)}` : '');
+        const tip = html`<strong style="color:${seg.color}">${seg.state}</strong><br/>${formatHMS(seg.start, tz as never)}${
+          seg.end > seg.start
+            ? html` – ${formatHMS(seg.end, tz as never)}<br/>${formatDuration(seg.end - seg.start)}`
+            : null
+        }`;
 
         if (isNarrow) {
           const overH = 4;
@@ -569,7 +572,7 @@ function buildD3Chart(
         .attr('stroke', isDark ? '#1e293b' : '#fff').attr('stroke-width', 1.5)
         .style('cursor', 'pointer')
         .on('mouseenter', (e: MouseEvent) =>
-          showTip(e, `<strong>${ev.label}</strong><br/>${formatRecordingEventTimestamp(new Date(ev.ts), tz)}`))
+          showTip(e, html`<strong>${ev.label}</strong><br/>${formatRecordingEventTimestamp(new Date(ev.ts), tz)}`))
         .on('mousemove', moveTip).on('mouseleave', hideTip);
     }
   }
@@ -585,24 +588,30 @@ function makeEventDots(
     let label: string;
     if (isTrack) {
       const base  = TRACK_EVENT_LABELS[ev.type] ?? ev.type.toLowerCase();
-      const aid   = ev.payload.archiveId ? ` [${shortId(String(ev.payload.archiveId))}]` : '';
-      const extra = ev.payload.type      ? ` · ${ev.payload.type}`                        : '';
+      const archiveId = payloadString(ev.payload, 'archiveId');
+      const recType   = payloadString(ev.payload, 'type');
+      const prevState = payloadString(ev.payload, 'prevState');
+      const newState  = payloadString(ev.payload, 'newState');
+      const aid   = archiveId ? ` [${shortId(archiveId)}]` : '';
+      const extra = recType   ? ` · ${recType}`            : '';
       const stateChg = ev.type === R.RECORDING_TRACK_STATE_CHANGED
-        && ev.payload.prevState != null && ev.payload.newState != null
-        ? ` (${ev.payload.prevState} → ${ev.payload.newState})`
+        && prevState != null && newState != null
+        ? ` (${prevState} → ${newState})`
         : '';
       const prerollExtra = ev.type === R.RECORDING_SESSION_RECORDING_TRACK_PREROLLED
         ? [
-            ev.payload.recorderMode != null ? `mode:${ev.payload.recorderMode}` : '',
-            ev.payload.recordingType != null ? `type:${ev.payload.recordingType}` : '',
+            ev.payload.recorderMode != null ? `mode:${toText(ev.payload.recorderMode)}` : '',
+            ev.payload.recordingType != null ? `type:${toText(ev.payload.recordingType)}` : '',
           ].filter(Boolean).join(' · ')
         : '';
       const prerollSuffix = prerollExtra ? ` · ${prerollExtra}` : '';
       label = base + aid + extra + stateChg + prerollSuffix;
     } else {
+      const prevState = payloadString(ev.payload, 'prevState');
+      const source    = payloadString(ev.payload, 'source');
       label = ev.type.replace(/^RECORDING_SESSION_|^RECORDER_SERVICE_/, '').toLowerCase().replace(/_/g, ' ') +
-        (ev.payload.prevState ? ` (${ev.payload.prevState} → ${ev.payload.actualState})` : '') +
-        (ev.payload.source    ? ` · ${ev.payload.source}` : '');
+        (prevState ? ` (${prevState} → ${payloadString(ev.payload, 'actualState') ?? 'unknown'})` : '') +
+        (source    ? ` · ${source}` : '');
     }
     return { ts: ev.timestamp.getTime(), color, label };
   });
@@ -1289,7 +1298,7 @@ const TRACK_STOP_EVENT_TYPES = [
 ] as const;
 
 function archiveTrackEvents(events: ClientRecordingEvent[], archiveId: string): ClientRecordingEvent[] {
-  return events.filter((e) => String(e.payload.archiveId ?? '') === archiveId);
+  return events.filter((e) => payloadString(e.payload, 'archiveId') === archiveId);
 }
 
 function firstEventTimeMs(matches: ClientRecordingEvent[], types: readonly string[]): number | null {
@@ -1399,8 +1408,8 @@ function StartRecordingTrackTimestampsTable({
   const startGapAlert =
     referenceServerGapMs != null && referenceServerGapMs > START_TRACK_TIMING_THRESHOLD_MS;
 
-  const takeId = payload.takeId != null ? String(payload.takeId) : null;
-  const sessionId = payload.sessionId != null ? String(payload.sessionId) : null;
+  const takeId = payloadString(payload, 'takeId') ?? null;
+  const sessionId = payloadString(payload, 'sessionId') ?? null;
   const lifecycleRows = buildArchiveLifecycleDurations(events, archiveId);
   const showLifecycleDurations = lifecycleRows.some((r) => r.fromMs != null || r.toMs != null);
 
@@ -1611,7 +1620,7 @@ function ArchiveCard({
     const matches = events.filter(
       (e) =>
         e.type === R.RECORDING_SESSION_START_RECORDING_TRACK
-        && String(e.payload.archiveId ?? '') === track.archiveId,
+        && payloadString(e.payload, 'archiveId') === track.archiveId,
     );
     if (matches.length === 0) return null;
     return matches.reduce((latest, e) =>
@@ -1751,7 +1760,7 @@ function ArchiveCard({
           {/* Audio / video track events for this archive */}
           {(() => {
             const archiveEvents = events.filter(
-              (e) => ARCHIVE_TRACK_LIST_EVENT_TYPES.has(e.type) && e.payload.archiveId === track.archiveId,
+              (e) => ARCHIVE_TRACK_LIST_EVENT_TYPES.has(e.type) && payloadString(e.payload, 'archiveId') === track.archiveId,
             );
             return archiveEvents.length > 0
               ? <TakeEventList events={archiveEvents} tz={tz} listLabel="Track Events" hideArchiveId />
@@ -2136,7 +2145,7 @@ function TakeEventList({
             const isUpdProd = ev.type === R.RECORDING_SESSION_UPDATE_PRODUCERS;
 
             // Human label — prefer track variant when archiveId is present
-            const _archiveId = ev.payload.archiveId != null ? String(ev.payload.archiveId) : null;
+            const _archiveId = payloadString(ev.payload, 'archiveId') ?? null;
             const label =
               (_archiveId && SESSION_TRACK_VARIANT_LABELS[ev.type])
               ?? TRACK_EVENT_LABELS[ev.type]
@@ -2145,30 +2154,26 @@ function TakeEventList({
 
             // Inline summary fields
             const archiveId = _archiveId;
-            const source    = ev.payload.source      != null ? String(ev.payload.source)     : null;
-            const recType   = ev.payload.type        != null ? String(ev.payload.type)       : null;
+            const source    = payloadString(ev.payload, 'source') ?? null;
+            const recType   = payloadString(ev.payload, 'type')   ?? null;
             const error     = hasMeaningfulPayloadError(ev.payload.error)
-              ? String(ev.payload.error).trim()
+              ? toText(ev.payload.error).trim()
               : null;
             const isTrackStateChg = ev.type === R.RECORDING_TRACK_STATE_CHANGED;
-            const prevSt    = isTrackStateChg
-              ? (ev.payload.prevState != null ? String(ev.payload.prevState) : null)
-              : (ev.payload.prevState != null ? String(ev.payload.prevState) : null);
-            const nextSt    = isTrackStateChg
-              ? (ev.payload.newState != null ? String(ev.payload.newState) : null)
-              : (ev.payload.actualState != null ? String(ev.payload.actualState) : null);
+            const prevSt    = payloadString(ev.payload, 'prevState') ?? null;
+            const nextSt    = payloadString(ev.payload, isTrackStateChg ? 'newState' : 'actualState') ?? null;
             const createdVersion = ev.type === R.RECORDING_SESSION_CREATED && ev.payload.version != null
-              ? String(ev.payload.version)
+              ? toText(ev.payload.version)
               : null;
             const recorderMode = ev.type === R.RECORDING_SESSION_RECORDING_TRACK_PREROLLED
-              && ev.payload.recorderMode != null ? String(ev.payload.recorderMode) : null;
+              && ev.payload.recorderMode != null ? toText(ev.payload.recorderMode) : null;
             const recordingTypePreroll = ev.type === R.RECORDING_SESSION_RECORDING_TRACK_PREROLLED
-              && ev.payload.recordingType != null ? String(ev.payload.recordingType) : null;
+              && ev.payload.recordingType != null ? toText(ev.payload.recordingType) : null;
             // Only show takeId chip in the RecorderService list (no contextTakeId).
             // Inside a TakeCard every event already belongs to the same take.
             const evTakeId  = contextTakeId
               ? null
-              : (ev.payload.takeId != null ? String(ev.payload.takeId) : null);
+              : (payloadString(ev.payload, 'takeId') ?? null);
             const prodCount = isUpdProd
               ? Object.keys(ev.payload).filter((k) => k.endsWith('ProducerId') && ev.payload[k]).length
               : 0;
@@ -2310,7 +2315,8 @@ export function ClientRecordingsSection({ processedStats }: { processedStats: Pr
     [processedStats],
   );
   const events = useMemo(
-    () => allEvents.filter((ev) => isRecordingClientEventType(ev.type)),
+    // A type that is not a string is not an event this section can name.
+    () => allEvents.filter((ev) => typeof ev.type === 'string' && isRecordingClientEventType(ev.type)),
     [allEvents],
   );
   const serviceOnlyEvents = useMemo(

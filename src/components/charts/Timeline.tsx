@@ -4,6 +4,7 @@ import * as d3 from 'd3';
 import { useCompareStore } from '../../stores/compareStore.ts';
 import { useTimezoneTick, type Tz } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale, formatTimeOnly } from '../../utils/formatting.ts';
+import { html, joinHtml, tableEntry, toHtmlString, type SafeHtml } from '../../utils/safeHtml.ts';
 import type { IceSelectedPairValue } from '../../utils/statsTypes.ts';
 import type { IssueLaneItem } from '../../utils/issueTimelinePlacement.ts';
 import { uniqueIssueLaneTypes } from '../../utils/issueTimelinePlacement.ts';
@@ -106,7 +107,7 @@ function generateStatefulSegments(
   for (let i = 0; i < allEvents.length - 1; i++) {
     const evt = allEvents[i];
     const nextEvt = allEvents[i + 1];
-    const newState = config.stateMap[evt.event] ?? currentState;
+    const newState = tableEntry(config.stateMap, evt.event) ?? currentState;
     raw.push({ start: evt.timestamp, end: nextEvt.timestamp, state: newState });
     currentState = newState;
   }
@@ -135,15 +136,15 @@ export interface TimelineOverlay {
   color: string;
   /** Optional label shown on hover. */
   label?: string;
-  /** Optional tooltip HTML shown on hover. Falls back to label + time range. */
-  tooltip?: string;
+  /** Optional tooltip markup shown on hover. Falls back to label + time range. */
+  tooltip?: SafeHtml;
 }
 
 export interface TimelinePointMarker {
   timestamp: number;
   label: string;
   color?: string;
-  tooltip?: string;
+  tooltip?: SafeHtml;
 }
 
 export interface TimelineProps {
@@ -248,26 +249,26 @@ function buildIceChangePoints(values: IceSelectedPairValue[]): IceSelectedPairVa
   return changes;
 }
 
-function iceSegmentTooltip(seg: IceSegment, tz: Tz): string {
-  const parts = [`<strong>${seg.state}</strong>`];
-  if (seg.candidateType) parts.push(`Type: ${seg.candidateType}`);
-  if (seg.ip) parts.push(`IP: ${seg.ip}`);
-  if (seg.relayProtocol) parts.push(`Relay: ${seg.relayProtocol}`);
-  if (seg.url) parts.push(`URL: ${seg.url}`);
-  if (seg.selectedCandidatePairId) parts.push(`Pair: ${seg.selectedCandidatePairId}`);
-  parts.push(`${formatTimeOnly(seg.start, tz)} – ${formatTimeOnly(seg.end, tz)}`);
-  return parts.join('<br/>');
+function iceSegmentTooltip(seg: IceSegment, tz: Tz): SafeHtml {
+  const parts = [html`<strong>${seg.state}</strong>`];
+  if (seg.candidateType) parts.push(html`Type: ${seg.candidateType}`);
+  if (seg.ip) parts.push(html`IP: ${seg.ip}`);
+  if (seg.relayProtocol) parts.push(html`Relay: ${seg.relayProtocol}`);
+  if (seg.url) parts.push(html`URL: ${seg.url}`);
+  if (seg.selectedCandidatePairId) parts.push(html`Pair: ${seg.selectedCandidatePairId}`);
+  parts.push(html`${formatTimeOnly(seg.start, tz)} – ${formatTimeOnly(seg.end, tz)}`);
+  return joinHtml(parts);
 }
 
-function iceChangeTooltip(cp: IceSelectedPairValue, tz: Tz): string {
-  const parts = [`<strong>Pair changed → ${cp.state}</strong>`];
-  if (cp.candidateType) parts.push(`Type: ${cp.candidateType}`);
-  if (cp.ip) parts.push(`IP: ${cp.ip}`);
-  if (cp.relayProtocol) parts.push(`Relay: ${cp.relayProtocol}`);
-  if (cp.url) parts.push(`URL: ${cp.url}`);
-  if (cp.selectedCandidatePairId) parts.push(`Pair: ${cp.selectedCandidatePairId}`);
-  parts.push(formatTimeOnly(cp.timestamp, tz));
-  return parts.join('<br/>');
+function iceChangeTooltip(cp: IceSelectedPairValue, tz: Tz): SafeHtml {
+  const parts = [html`<strong>Pair changed → ${cp.state}</strong>`];
+  if (cp.candidateType) parts.push(html`Type: ${cp.candidateType}`);
+  if (cp.ip) parts.push(html`IP: ${cp.ip}`);
+  if (cp.relayProtocol) parts.push(html`Relay: ${cp.relayProtocol}`);
+  if (cp.url) parts.push(html`URL: ${cp.url}`);
+  if (cp.selectedCandidatePairId) parts.push(html`Pair: ${cp.selectedCandidatePairId}`);
+  parts.push(html`${formatTimeOnly(cp.timestamp, tz)}`);
+  return joinHtml(parts);
 }
 
 export function Timeline({ title, description, data, eventBus, iceValues, overlays, pointMarkers, issueLane, pinLabel }: TimelineProps) {
@@ -389,7 +390,7 @@ export function Timeline({ title, description, data, eventBus, iceValues, overla
             .style('cursor', 'pointer')
             .on('mouseenter', function (event: MouseEvent) {
               d3.select(this).attr('opacity', '1');
-              tooltipDiv.style('opacity', '1').html(iceSegmentTooltip(seg, tz))
+              tooltipDiv.style('opacity', '1').html(toHtmlString(iceSegmentTooltip(seg, tz)))
                 .style('left', `${event.clientX + 12}px`).style('top', `${event.clientY - 10}px`);
             })
             .on('mousemove', function (event: MouseEvent) {
@@ -422,7 +423,7 @@ export function Timeline({ title, description, data, eventBus, iceValues, overla
           cpGroup
             .on('mouseenter', function (event: MouseEvent) {
               d3.select(this).select('path').attr('fill', 'var(--accent)').attr('stroke', 'var(--accent)');
-              tooltipDiv.style('opacity', '1').html(iceChangeTooltip(cp, tz))
+              tooltipDiv.style('opacity', '1').html(toHtmlString(iceChangeTooltip(cp, tz)))
                 .style('left', `${event.clientX + 12}px`).style('top', `${event.clientY - 10}px`);
             })
             .on('mousemove', function (event: MouseEvent) {
@@ -473,9 +474,9 @@ export function Timeline({ title, description, data, eventBus, iceValues, overla
             const startStr = formatTimeOnly(ov.start, tz);
             const endStr = formatTimeOnly(ov.end, tz);
             const dur = ((ov.end - ov.start) / 1000).toFixed(1);
-            const tooltipHtml = ov.tooltip
-              ?? `<strong>${ov.label ?? 'Recording'}</strong><br/>${startStr} – ${endStr}<br/>${dur}s`;
-            tooltipDiv.style('opacity', '1').html(tooltipHtml)
+            const tip = ov.tooltip
+              ?? html`<strong>${ov.label ?? 'Recording'}</strong><br/>${startStr} – ${endStr}<br/>${dur}s`;
+            tooltipDiv.style('opacity', '1').html(toHtmlString(tip))
               .style('left', `${event.clientX + 12}px`).style('top', `${event.clientY - 10}px`);
           })
           .on('mousemove', function (event: MouseEvent) {
@@ -506,7 +507,7 @@ export function Timeline({ title, description, data, eventBus, iceValues, overla
       const x1 = xScale(new Date(seg.start));
       const x2 = xScale(new Date(seg.end));
       const w = Math.max(1, x2 - x1);
-      const color = config.colorMap[seg.state] ?? 'var(--accent)';
+      const color = tableEntry(config.colorMap, seg.state) ?? 'var(--accent)';
 
       barGroup
         .append('rect')
@@ -522,9 +523,10 @@ export function Timeline({ title, description, data, eventBus, iceValues, overla
           const startStr = formatTimeOnly(seg.start, tz);
           const endStr = formatTimeOnly(seg.end, tz);
           const dur = ((seg.end - seg.start) / 1000).toFixed(1);
+          const tip = html`<strong>${seg.state}</strong><br/>${startStr} – ${endStr}<br/>${dur}s`;
           tooltipDiv
             .style('opacity', '1')
-            .html(`<strong>${seg.state}</strong><br/>${startStr} – ${endStr}<br/>${dur}s`)
+            .html(toHtmlString(tip))
             .style('left', `${event.clientX + 12}px`)
             .style('top', `${event.clientY - 10}px`);
         })
@@ -629,9 +631,10 @@ export function Timeline({ title, description, data, eventBus, iceValues, overla
         .on('mouseenter', function (event: MouseEvent) {
           d3.select(this).select('line').attr('opacity', '1').attr('stroke', 'var(--accent)');
           d3.select(this).select('path').attr('fill', 'var(--accent)').attr('opacity', '1');
+          const tip = html`<strong>${evt.event}</strong><br/>${formatTimeOnly(evt.timestamp, tz)}`;
           tooltipDiv
             .style('opacity', '1')
-            .html(`<strong>${evt.event}</strong><br/>${formatTimeOnly(evt.timestamp, tz)}`)
+            .html(toHtmlString(tip))
             .style('left', `${event.clientX + 12}px`)
             .style('top', `${event.clientY - 10}px`);
         })
@@ -685,12 +688,11 @@ export function Timeline({ title, description, data, eventBus, iceValues, overla
         .on('mouseenter', function (event: MouseEvent) {
           d3.select(this).select('line').attr('opacity', '1');
           d3.select(this).select('circle').attr('opacity', '1');
+          const tip = marker.tooltip
+            ?? html`<strong style="color:${markerColor}">${marker.label}</strong><br/>${formatTimeOnly(marker.timestamp, tz)}`;
           tooltipDiv
             .style('opacity', '1')
-            .html(
-              marker.tooltip
-              ?? `<strong style="color:${markerColor}">${marker.label}</strong><br/>${formatTimeOnly(marker.timestamp, tz)}`,
-            )
+            .html(toHtmlString(tip))
             .style('left', `${event.clientX + 12}px`)
             .style('top', `${event.clientY - 10}px`);
         })

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale } from '../../utils/formatting.ts';
+import { html, toHtmlString, type SafeHtml } from '../../utils/safeHtml.ts';
 import type { VideoProcessingInterval, VideoProcessingTimelineResult } from '../../utils/videoProcessingTimeline.ts';
 import styles from './MediaOverview.module.css';
 
@@ -23,7 +24,7 @@ export function VideoProcessingOverview({
   const hostRef = useRef<HTMLDivElement>(null);
   const tz = useTimezoneTick();
   const lastWidthRef = useRef(0);
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; html: string } | null>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; html: SafeHtml } | null>(null);
 
   const rows = useMemo(
     () =>
@@ -80,17 +81,13 @@ export function VideoProcessingOverview({
     const showTip = (ev: MouseEvent, interval: VideoProcessingInterval) => {
       const dur = interval.endMs - interval.startMs;
       const fmt = d3TimeFormat('%H:%M:%S', tz as never);
+      const inferred = interval.hasInferredSpan
+        ? html`<br/><span style="color:var(--text-muted)">state held between sparse readings</span>`
+        : null;
       setTooltip({
         x: ev.clientX + 12,
         y: ev.clientY - 10,
-        html:
-          `<strong>${interval.participantKey}</strong><br/>` +
-          `videoProcessing: <strong>${interval.state}</strong><br/>` +
-          `${fmt(new Date(interval.startMs))} – ${fmt(new Date(interval.endMs))}<br/>` +
-          `${(dur / 1000).toFixed(1)}s · ${interval.sampleCount} reading${interval.sampleCount !== 1 ? 's' : ''}` +
-          (interval.hasInferredSpan
-            ? '<br/><span style="color:var(--text-muted)">state held between sparse readings</span>'
-            : ''),
+        html: html`<strong>${interval.participantKey}</strong><br/>videoProcessing: <strong>${interval.state}</strong><br/>${fmt(new Date(interval.startMs))} – ${fmt(new Date(interval.endMs))}<br/>${(dur / 1000).toFixed(1)}s · ${interval.sampleCount} reading${interval.sampleCount !== 1 ? 's' : ''}${inferred}`,
       });
     };
 
@@ -184,7 +181,7 @@ export function VideoProcessingOverview({
         <div
           className={styles.hoverTooltip}
           style={{ left: tooltip.x, top: tooltip.y, opacity: 1 }}
-          dangerouslySetInnerHTML={{ __html: tooltip.html }}
+          dangerouslySetInnerHTML={{ __html: toHtmlString(tooltip.html) }}
         />
       )}
     </div>

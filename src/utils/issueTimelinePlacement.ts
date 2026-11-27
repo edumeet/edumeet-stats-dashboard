@@ -7,6 +7,7 @@ import {
   type ClientIssueEpisode,
 } from './clientIssueEpisodes.ts';
 import { getConsumerTrackAttachments, getProducerTrackAttachments } from './clientAttachments.ts';
+import type { SafeHtml } from './safeHtml.ts';
 
 export interface IssueLaneItem {
   type: string;
@@ -15,7 +16,7 @@ export interface IssueLaneItem {
   start: number;
   end: number;
   stillOpen: boolean;
-  tooltipHtml: string;
+  tooltipHtml: SafeHtml;
 }
 
 /**

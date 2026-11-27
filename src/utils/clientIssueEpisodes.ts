@@ -8,6 +8,7 @@ import {
 } from '../schema/ClientIssueTypes.ts';
 import { parseJsonPayload } from '../schema/clientSampleParse.ts';
 import { formatBytes, formatBps, formatDuration, formatHMS, shortId } from './formatting.ts';
+import { html, joinHtml, toText, type SafeHtml } from './safeHtml.ts';
 
 /**
  * One issue, from the moment it was raised to the moment it cleared.
@@ -94,47 +95,56 @@ export function formatIssueDuration(ms: number | null | undefined): string {
   return formatDuration(ms);
 }
 
+/**
+ * A payload value read as a number. Only a number or a numeric string is
+ * converted: `Number()` on an object calls into it, and throws when the
+ * payload made `toString` something other than a function.
+ */
+function payloadNumber(raw: unknown): number {
+  return typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN;
+}
+
 export function formatHighlightValue(field: IssueHighlightField, payload: Record<string, unknown> | null): string | null {
   if (!payload || !(field.key in payload) || payload[field.key] == null) return null;
   const raw = payload[field.key];
   switch (field.format) {
     case 'string':
       if (typeof raw === 'boolean') return raw ? 'yes' : 'no';
-      return String(raw);
+      return toText(raw);
     case 'number': {
-      const n = typeof raw === 'number' ? raw : Number(raw);
-      if (!Number.isFinite(n)) return String(raw);
+      const n = payloadNumber(raw);
+      if (!Number.isFinite(n)) return toText(raw);
       if (Number.isInteger(n) || Math.abs(n) >= 100) return String(Math.round(n));
       return n.toFixed(Math.abs(n) >= 10 ? 1 : 2);
     }
     case 'ms': {
-      const n = typeof raw === 'number' ? raw : Number(raw);
-      if (!Number.isFinite(n)) return String(raw);
+      const n = payloadNumber(raw);
+      if (!Number.isFinite(n)) return toText(raw);
       return formatIssueDuration(n);
     }
     case 'fraction': {
-      const n = typeof raw === 'number' ? raw : Number(raw);
-      if (!Number.isFinite(n)) return String(raw);
+      const n = payloadNumber(raw);
+      if (!Number.isFinite(n)) return toText(raw);
       const pct = n <= 1 ? n * 100 : n;
       return `${pct.toFixed(pct >= 10 ? 0 : 1)}%`;
     }
     case 'per-sec': {
-      const n = typeof raw === 'number' ? raw : Number(raw);
-      if (!Number.isFinite(n)) return String(raw);
+      const n = payloadNumber(raw);
+      if (!Number.isFinite(n)) return toText(raw);
       return `${n.toFixed(n >= 10 ? 1 : 2)}/s`;
     }
     case 'bytes': {
-      const n = typeof raw === 'number' ? raw : Number(raw);
-      if (!Number.isFinite(n)) return String(raw);
+      const n = payloadNumber(raw);
+      if (!Number.isFinite(n)) return toText(raw);
       return formatBytes(n);
     }
     case 'bps': {
-      const n = typeof raw === 'number' ? raw : Number(raw);
-      if (!Number.isFinite(n)) return String(raw);
+      const n = payloadNumber(raw);
+      if (!Number.isFinite(n)) return toText(raw);
       return formatBps(n);
     }
     default:
-      return String(raw);
+      return toText(raw);
   }
 }
 
@@ -153,42 +163,28 @@ export function episodeHighlights(meta: IssueTypeMeta, episode: ClientIssueEpiso
   return out;
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 export function episodeTooltipHtml(
   meta: IssueTypeMeta,
   episode: ClientIssueEpisode,
   tz: string,
-): string {
+): SafeHtml {
   const highlights = episodeHighlights(meta, episode);
   const time = formatHMS(episode.raisedAt, tz as never);
   const end = episode.resolvedAt && episode.resolvedAt > episode.raisedAt
     ? ` → ${formatHMS(episode.resolvedAt, tz as never)}`
     : '';
   const duration = episode.durationMs != null ? formatIssueDuration(episode.durationMs) : '';
-  const fields = highlights
-    .map((h) => `<span style="color:var(--text-muted)">${escapeHtml(h.label)}</span> ${escapeHtml(h.value)}`)
-    .join('<br/>');
+  const fields = highlights.map(
+    (h) => html`<span style="color:var(--text-muted)">${h.label}</span> ${h.value}`,
+  );
   // The resolution is the good half of the story, and the comment is the
   // client's own account of why it cleared — worth more than another number.
   const comment = episode.resolveComment
-    ? `<br/><span style="color:var(--success)">resolved</span> ${escapeHtml(episode.resolveComment)}`
+    ? html`<br/><span style="color:var(--success)">resolved</span> ${episode.resolveComment}`
     : episode.resolvedByClient
-      ? '<br/><span style="color:var(--success)">resolved</span>'
-      : '';
-  return (
-    `<strong>${escapeHtml(meta.label)}</strong><br/>` +
-    `${time}${end}` +
-    (duration ? `<br/>${escapeHtml(duration)}` : '') +
-    comment +
-    (fields ? `<br/>${fields}` : '')
-  );
+      ? html`<br/><span style="color:var(--success)">resolved</span>`
+      : null;
+  return html`<strong>${meta.label}</strong><br/>${time}${end}${duration ? html`<br/>${duration}` : null}${comment}${fields.length > 0 ? html`<br/>${joinHtml(fields)}` : null}`;
 }
 
 function identityOf(issue: RawIssue): string {

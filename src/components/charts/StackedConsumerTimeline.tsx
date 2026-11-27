@@ -4,6 +4,7 @@ import * as d3 from 'd3';
 import { useCompareStore } from '../../stores/compareStore.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale, formatTimeOnly } from '../../utils/formatting.ts';
+import { html, tableEntry, toHtmlString } from '../../utils/safeHtml.ts';
 import { ScreenshotButton } from '../sections/ScreenshotButton.tsx';
 import type { IssueLaneItem } from '../../utils/issueTimelinePlacement.ts';
 import { uniqueIssueLaneTypes } from '../../utils/issueTimelinePlacement.ts';
@@ -267,11 +268,10 @@ export function StackedConsumerTimeline({ data, description, eventBus, issueLane
             const startStr = formatTimeOnly(seg.start, tz);
             const endStr = formatTimeOnly(seg.end, tz);
             const dur = ((seg.end - seg.start) / 1000).toFixed(1);
+            const tip = html`<strong>${track.name}: ${state}</strong><br/>${startStr} – ${endStr}<br/>${dur}s`;
             tooltipDiv
               .style('opacity', '1')
-              .html(
-                `<strong>${track.name}: ${state}</strong><br/>${startStr} – ${endStr}<br/>${dur}s`,
-              )
+              .html(toHtmlString(tip))
               .style('left', `${event.clientX + 12}px`)
               .style('top', `${event.clientY - 10}px`);
           })
@@ -336,7 +336,7 @@ export function StackedConsumerTimeline({ data, description, eventBus, issueLane
     };
 
     for (const evt of allEvents) {
-      const trackIdx = trackMap[evt.event];
+      const trackIdx = tableEntry(trackMap, evt.event);
       if (trackIdx == null) continue;
       const x = xScale(new Date(evt.timestamp));
       const trackY = START_Y + trackIdx * (TRACK_HEIGHT + TRACK_SPACING);
@@ -354,11 +354,10 @@ export function StackedConsumerTimeline({ data, description, eventBus, issueLane
       circle
         .on('mouseenter', (event: MouseEvent) => {
           circle.attr('r', 6);
+          const tip = html`<strong>${evt.event}</strong><br/>${formatTimeOnly(evt.timestamp, tz)}`;
           tooltipDiv
             .style('opacity', '1')
-            .html(
-              `<strong>${evt.event}</strong><br/>${formatTimeOnly(evt.timestamp, tz)}`,
-            )
+            .html(toHtmlString(tip))
             .style('left', `${event.clientX + 12}px`)
             .style('top', `${event.clientY - 10}px`);
         })

@@ -5,6 +5,7 @@ import type { QualityChartData, QualitySeries } from '../../utils/dashboardModel
 import { qualityColor } from '../../utils/dashboardModel.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale, formatHMS } from '../../utils/formatting.ts';
+import { html, toHtmlString } from '../../utils/safeHtml.ts';
 import cardStyles from './CallDashboard.module.css';
 import styles from './QualityChart.module.css';
 import { InfoIcon } from '../help/InfoIcon.tsx';
@@ -218,19 +219,13 @@ export function QualityChart({
           .attr('stroke-width', 1)
           .attr('opacity', (d) => (dimmed(d.series) ? 0.25 : 1));
 
-        const rows = readings
-          .map(
-            (r) =>
-              `<div style="display:flex;align-items:center;gap:6px">` +
-              `<span style="width:8px;height:8px;border-radius:2px;background:${r.series.color};flex:none"></span>` +
-              `<span style="flex:1">${escapeHtml(r.series.label)}</span>` +
-              `<strong style="color:${qualityColor(r.point.v)}">${r.point.v.toFixed(1)}</strong>` +
-              `</div>`,
-          )
-          .join('');
+        const rows = readings.map(
+          (r) =>
+            html`<div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:2px;background:${r.series.color};flex:none"></span><span style="flex:1">${r.series.label}</span><strong style="color:${qualityColor(r.point.v)}">${r.point.v.toFixed(1)}</strong></div>`,
+        );
 
-        tooltip.innerHTML =
-          `<div style="color:var(--text-muted);margin-bottom:3px">${formatHMS(at, tz)}</div>${rows}`;
+        const tip = html`<div style="color:var(--text-muted);margin-bottom:3px">${formatHMS(at, tz)}</div>${rows}`;
+        tooltip.innerHTML = toHtmlString(tip);
         tooltip.style.opacity = '1';
 
         // Flip to the left of the cursor near the right edge so the readout
@@ -334,11 +329,5 @@ export function QualityChart({
         </>
       )}
     </div>
-  );
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"]/g, (c) =>
-    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
   );
 }

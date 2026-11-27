@@ -27,6 +27,7 @@ import {
   uniqueIssueLaneTypes,
 } from '../src/utils/issueTimelinePlacement.ts';
 import { issueTimelineTarget, getIssueTypeMeta } from '../src/schema/ClientIssueTypes.ts';
+import { toHtmlString } from '../src/utils/safeHtml.ts';
 
 const T0 = 1_700_000_000_000;
 
@@ -403,7 +404,7 @@ check('an open episode is drawn to the end of the session', () => {
   // The label and colour come from the issue type table, so the lane and the
   // legend agree.
   assert.equal(items[0].label, getIssueTypeMeta('ice-disconnected').label);
-  assert.ok(items[0].tooltipHtml.length > 0);
+  assert.ok(toHtmlString(items[0].tooltipHtml).length > 0);
 });
 
 check('the legend lists each type once', () => {

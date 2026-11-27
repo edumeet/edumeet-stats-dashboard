@@ -1,9 +1,20 @@
 import { tsMs, scoreColor } from './formatting.ts';
 import type { OutboundTimeSeriesValue, ProcessWebRTCStatsResult, TimeSeriesValueBase } from './statsTypes.ts';
 
-function seriesNum(v: Record<string, unknown>, field: string): number | undefined {
-  const x = v[field];
+/**
+ * A stat as a number, or nothing.
+ *
+ * The types say every counter in a sample is a number; the sample is what a
+ * client sent, and may hold a string, an object or null there. Only a finite
+ * number is plotted, summed or formatted — arithmetic on anything else would
+ * quietly turn `"5"` into a point, or into text glued onto a total.
+ */
+export function finiteNumber(x: unknown): number | undefined {
   return typeof x === 'number' && Number.isFinite(x) ? x : undefined;
+}
+
+function seriesNum(v: Record<string, unknown>, field: string): number | undefined {
+  return finiteNumber(v[field]);
 }
 
 export interface ChartDef<T extends TimeSeriesValueBase = OutboundTimeSeriesValue> {
@@ -31,7 +42,9 @@ export function buildChartData<T extends TimeSeriesValueBase>(
     if (def.condition === false) return charts;
     const data: Array<{ timestamp: Date; value: number }> = [];
     for (const v of values) {
-      const val = def.extract(v);
+      // Checked here, not left to each definition: `extract` returns whatever
+      // the sample held under that name.
+      const val = finiteNumber(def.extract(v));
       if (val !== undefined) data.push({ timestamp: new Date(tsMs(v.timestamp)), value: val });
     }
     if (data.length < 2) return charts;

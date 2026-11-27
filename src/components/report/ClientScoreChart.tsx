@@ -5,19 +5,11 @@ import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale } from '../../utils/formatting.ts';
 import type { ProcessWebRTCStatsResult } from '../../utils/statsTypes.ts';
 import { buildSampleScoreReasons } from '../../utils/sampleScoreReasons.ts';
+import { html, toHtmlString, type SafeHtml } from '../../utils/safeHtml.ts';
 import styles from './ClientScoreChart.module.css';
 
 const HEIGHT = 120;
 const MARGIN = { top: 8, right: 12, bottom: 24, left: 32 };
-
-/** Reasons are client-supplied free text, so they are escaped before injection. */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 function scoreColor(v: number): string {
   if (v >= 4) return '#22c55e'; // green
@@ -52,7 +44,7 @@ export function ClientScoreChart({
   const tz = useTimezoneTick();
   const chartRef = useRef<HTMLDivElement>(null);
 
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; html: string } | null>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; html: SafeHtml } | null>(null);
 
   const sessionScores = processedStats.scores?.session ?? [];
 
@@ -207,39 +199,26 @@ export function ClientScoreChart({
           byEntity.set(reason.entityLabel, list);
         }
 
-        const body = [...byEntity.entries()]
-          .map(
-            ([label, list]) =>
-              `<div class="${styles.reasonGroup}">` +
-              `<span class="${styles.reasonEntity}">${escapeHtml(label)}</span>` +
-              `<ul class="${styles.reasons}">` +
-              list
-                .map(
-                  (r) =>
-                    `<li>${escapeHtml(r.meta.label)}` +
-                    (typeof r.points === 'number' && r.points > 0
-                      ? ` <span class="${styles.reasonPoints}">\u2212${r.points.toFixed(
-                          r.points % 1 === 0 ? 0 : 1,
-                        )}</span>`
-                      : '') +
-                    '</li>',
-                )
-                .join('') +
-              '</ul></div>',
-          )
-          .join('');
+        // Entity labels and reasons are the client's own free text.
+        const body = [...byEntity.entries()].map(([label, list]) => {
+          const items = list.map((r) => {
+            const points = typeof r.points === 'number' && r.points > 0
+              ? html` <span class="${styles.reasonPoints}">\u2212${r.points.toFixed(r.points % 1 === 0 ? 0 : 1)}</span>`
+              : null;
+            return html`<li>${r.meta.label}${points}</li>`;
+          });
+          return html`<div class="${styles.reasonGroup}"><span class="${styles.reasonEntity}">${label}</span><ul class="${styles.reasons}">${items}</ul></div>`;
+        });
+        const header = html`<strong style="color:${scoreColor(point.value)}">${point.value.toFixed(2)} / 5</strong><span style="color:var(--text-muted)"> · ${time}</span>`;
+        const empty = html`<div class="${styles.reasonEmpty}">No component raised a reason in this sample.</div>`;
+        const hint = onSelectSample && reasons.length > 0
+          ? html`<div class="${styles.reasonHint}">Click to open this sample below</div>`
+          : null;
 
         setTooltip({
           x: event.clientX + 12,
           y: event.clientY - 10,
-          html:
-            `<strong style="color:${scoreColor(point.value)}">${point.value.toFixed(2)} / 5</strong>` +
-            `<span style="color:var(--text-muted)"> · ${time}</span>` +
-            (body ||
-              `<div class="${styles.reasonEmpty}">No component raised a reason in this sample.</div>`) +
-            (onSelectSample && reasons.length > 0
-              ? `<div class="${styles.reasonHint}">Click to open this sample below</div>`
-              : ''),
+          html: html`${header}${body.length > 0 ? body : empty}${hint}`,
         });
       })
       .on('mouseleave', () => {
@@ -315,7 +294,7 @@ export function ClientScoreChart({
         <div
           className={styles.tooltip}
           style={{ left: tooltip.x, top: tooltip.y }}
-          dangerouslySetInnerHTML={{ __html: tooltip.html }}
+          dangerouslySetInnerHTML={{ __html: toHtmlString(tooltip.html) }}
         />
       )}
     </div>

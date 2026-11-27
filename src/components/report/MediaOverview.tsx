@@ -9,6 +9,7 @@ import type { ClientSample } from '../../schema/ClientSample.ts';
 import type { ProcessWebRTCStatsResult } from '../../utils/statsProcessor.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
 import { d3TimeFormat, d3TimeScale, mediaKindLabelPrefix } from '../../utils/formatting.ts';
+import { html, toHtmlString } from '../../utils/safeHtml.ts';
 import type { MediaOverviewStream } from '../../utils/mediaOverview.ts';
 import type { ClientServerData as ServerData } from '../../utils/routerServerData.ts';
 import { VideoProcessingOverview } from './VideoProcessingOverview.tsx';
@@ -302,16 +303,17 @@ function MediaOverviewBody({ serverData, clientStats, processedClientStats, room
       const activeDur = activeSegs.filter(s => s.active).reduce((t, s) => t + (s.end - s.start), 0);
       const pausedDur = durationMs - activeDur;
 
-      tooltipDiv.html(
-        `<div class="${styles.ttHeader}">${mediaKindLabelPrefix(bar.kind)}${bar.label}</div>` +
-        `<div class="${styles.ttType}">${typeLabel}</div>` +
-        `<div class="${styles.ttRow}"><span>Duration</span><strong>${formatDurationShort(durationMs)}</strong></div>` +
-        `<div class="${styles.ttRow}"><span>Active</span><strong>${formatDurationShort(activeDur)}</strong></div>` +
-        (pausedDur > 0 ? `<div class="${styles.ttRow}"><span>Paused</span><strong>${formatDurationShort(pausedDur)}</strong></div>` : '') +
-        `<div class="${styles.ttRow}"><span>Start</span><strong>${d3TimeFormat('%H:%M:%S', tz)(new Date(bar.stream.createdAt))}</strong></div>` +
-        `<div class="${styles.ttRow}"><span>End</span><strong>${bar.stream.closedAt ? d3TimeFormat('%H:%M:%S', tz)(new Date(bar.stream.closedAt)) : 'ongoing'}</strong></div>` +
-        `<div class="${styles.ttHint}">Click to jump to ${typeLabel.toLowerCase()}</div>`
-      );
+      const row = (name: string, value: string) =>
+        html`<div class="${styles.ttRow}"><span>${name}</span><strong>${value}</strong></div>`;
+      const rows = [
+        row('Duration', formatDurationShort(durationMs)),
+        row('Active', formatDurationShort(activeDur)),
+        pausedDur > 0 ? row('Paused', formatDurationShort(pausedDur)) : null,
+        row('Start', d3TimeFormat('%H:%M:%S', tz)(new Date(bar.stream.createdAt))),
+        row('End', bar.stream.closedAt ? d3TimeFormat('%H:%M:%S', tz)(new Date(bar.stream.closedAt)) : 'ongoing'),
+      ];
+      const tip = html`<div class="${styles.ttHeader}">${mediaKindLabelPrefix(bar.kind)}${bar.label}</div><div class="${styles.ttType}">${typeLabel}</div>${rows}<div class="${styles.ttHint}">Click to jump to ${typeLabel.toLowerCase()}</div>`;
+      tooltipDiv.html(toHtmlString(tip));
 
       tooltipDiv.style('opacity', '1');
       repositionTooltip(event);

@@ -16,7 +16,7 @@ import { consumerIssueLaneItems } from '../../utils/issueTimelinePlacement.ts';
 import type { ClientTrackView } from '../../utils/clientTracks.ts';
 import { formatHMS, formatBps, formatCodecDetails, shortId, lifecycleDuration, tsMs } from '../../utils/formatting.ts';
 import { useTimezoneTick } from '../../stores/tzStore.ts';
-import { buildChartData, getTrackScoreBadge, detectChanges, type ChartDef } from '../../utils/chartHelpers.ts';
+import { buildChartData, finiteNumber, getTrackScoreBadge, detectChanges, type ChartDef } from '../../utils/chartHelpers.ts';
 import styles from './ConsumerSection.module.css';
 
 interface ConsumerSectionProps {
@@ -71,10 +71,10 @@ export function ConsumerSection({
   const primaryDefs: ChartDef<InboundTimeSeriesValue>[] = [
     { title: 'Actual Bitrate (kbps)', tip: 'Real throughput from bytes received. Sudden drops may indicate network issues or SFU throttling. Audio: expect 20–100 kbps. Video: 100–2500+ kbps depending on resolution.', extract: (v) => v._actualBitrateKbps, formatter: (v) => formatBps(v * 1000), needNonZero: true },
     { title: 'Audio Level', tip: 'RMS audio amplitude (0–1). Values near 0 mean silence. Typical speech: 0.01–0.1. If consistently 0, the mic may be muted or broken.', extract: (v) => v.audioLevel, formatter: (v) => v.toFixed(4), needNonZero: true, condition: isAudio },
-    { title: 'Jitter (ms)', tip: 'Inter-packet arrival time variation. Good: <20ms. Warning: 20–50ms. Bad: >50ms. High jitter causes audio glitches and video stuttering.', extract: (v) => v.jitter ? v.jitter * 1000 : undefined, formatter: (v) => `${v.toFixed(2)} ms`, needNonZero: true },
+    { title: 'Jitter (ms)', tip: 'Inter-packet arrival time variation. Good: <20ms. Warning: 20–50ms. Bad: >50ms. High jitter causes audio glitches and video stuttering.', extract: (v) => { const n = finiteNumber(v.jitter); return n ? n * 1000 : undefined; }, formatter: (v) => `${v.toFixed(2)} ms`, needNonZero: true },
     { title: 'Packets Lost', tip: 'Cumulative packets lost. Any increasing trend indicates ongoing network issues. Spikes correlate with visible/audible quality drops.', extract: (v) => v.packetsLost, needNonZero: true },
     { title: 'Frame Rate (FPS)', tip: 'Frames per second received and decoded. Good: matches source (15–30 fps). Drops below 10 fps are visibly choppy.', extract: (v) => v.framesPerSecond, formatter: (v) => `${v.toFixed(1)} fps`, needNonZero: true, condition: isVideo },
-    { title: 'Resolution', tip: 'Video height in pixels being received. Drops indicate the SFU or sender reduced quality, often due to bandwidth or CPU constraints.', extract: (v) => v.frameHeight || undefined, formatter: (v) => `${v}p`, needNonZero: true, condition: isVideo },
+    { title: 'Resolution', tip: 'Video height in pixels being received. Drops indicate the SFU or sender reduced quality, often due to bandwidth or CPU constraints.', extract: (v) => finiteNumber(v.frameHeight) || undefined, formatter: (v) => `${v}p`, needNonZero: true, condition: isVideo },
     { title: 'Decode Time/Frame (ms)', tip: 'Average time to decode one frame. Good: <10ms. Warning: 10–30ms. Bad: >30ms. High values indicate CPU pressure.', extract: (v) => v.decodeTimePerFrame, formatter: (v) => `${v.toFixed(2)} ms`, needNonZero: true, condition: isVideo },
     { title: 'Decode CPU %', tip: 'Fraction of wall-clock time spent decoding video. Good: <50%. Warning: 50–80%. Bad: >80%. High values may cause frame drops and freezes.', extract: (v) => v.decodeCpuPercent, formatter: (v) => `${v.toFixed(1)}%`, needNonZero: true, condition: isVideo },
     { title: 'Freeze Count', tip: 'Number of visible freezes detected by the browser. Any freeze is noticeable to the user. Rising count indicates ongoing issues.', extract: (v) => v.freezeCount, needNonZero: true, condition: isVideo },
@@ -332,8 +332,10 @@ function findPlayoutSeries(
 
     for (const v of values) {
       const ts = v.timestamp instanceof Date ? v.timestamp : new Date(v.timestamp);
-      if (v._avgPlayoutDelayMs != null) delayData.push({ timestamp: ts, value: v._avgPlayoutDelayMs });
-      if (v._synthesizedFractionPct != null) synthData.push({ timestamp: ts, value: v._synthesizedFractionPct });
+      const delay = finiteNumber(v._avgPlayoutDelayMs);
+      const synth = finiteNumber(v._synthesizedFractionPct);
+      if (delay != null) delayData.push({ timestamp: ts, value: delay });
+      if (synth != null) synthData.push({ timestamp: ts, value: synth });
     }
 
     if (delayData.length >= 2) {

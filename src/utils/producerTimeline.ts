@@ -1,4 +1,7 @@
 import type { ServerProducer, ServerConsumer } from './routerServerData.ts';
+import { STREAM_RECORDING_ID_COLOR, type StreamRecordingIdEvent } from '../schema/RecordingClientEventTypes.ts';
+import { formatDuration, formatHMS, shortId } from './formatting.ts';
+import { html, type SafeHtml } from './safeHtml.ts';
 
 /**
  * Anything with a lifecycle worth drawing as a bar. Producers and consumers
@@ -185,4 +188,40 @@ export function buildProducerInstantBoxes(producer: Producer): ProducerInstantBo
     });
   }
   return out.sort((a, b) => a.timestamp - b.timestamp);
+}
+
+/*
+ * Hover text for the overview timeline. Kept here, away from the component,
+ * so the tests can feed them a hostile stream without a DOM.
+ */
+
+/** A point marker: what happened and when. */
+export function producerEventTip(
+  label: string,
+  color: string,
+  timestamp: number,
+  tz: string,
+  extra?: string,
+): SafeHtml {
+  const time = formatHMS(timestamp, tz as never);
+  return html`<strong style="color:${color}">${label}</strong><br/>${time}${
+    extra ? html`<br/><span style="color:var(--text-muted)">${extra}</span>` : null
+  }`;
+}
+
+/** A lifecycle span: its state, and how long it held. */
+export function producerSegmentTip(seg: ProducerLifecycleSegment, tz: string): SafeHtml {
+  const range =
+    seg.end > seg.start
+      ? html`${formatHMS(seg.start, tz as never)} – ${formatHMS(seg.end, tz as never)}<br/>${formatDuration(seg.end - seg.start)}`
+      : html`${formatHMS(seg.start, tz as never)}`;
+  return html`<strong style="color:${seg.color}">${seg.state}</strong><br/>${range}`;
+}
+
+/** A stream-recording-id change. Both the id and the source are the client's own words. */
+export function streamRecordingIdTip(ev: StreamRecordingIdEvent, tz: string): SafeHtml {
+  const time = formatHMS(ev.timestamp, tz as never);
+  const idLine = ev.newId ? html`<br/><code class="id-badge">${shortId(ev.newId)}</code>` : null;
+  const sourceLine = ev.source ? html`<br/><span style="color:var(--text-muted)">${ev.source}</span>` : null;
+  return html`<strong style="color:${STREAM_RECORDING_ID_COLOR}">stream recording id changed</strong><br/>${time}${idLine}${sourceLine}`;
 }

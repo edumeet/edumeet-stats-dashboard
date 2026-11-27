@@ -2,7 +2,7 @@
 import { CollapsibleSection } from '../sections/CollapsibleSection.tsx';
 import { MiniChart } from '../charts/MiniChart.tsx';
 import { formatBps } from '../../utils/formatting.ts';
-import { buildChartData, type ChartDef } from '../../utils/chartHelpers.ts';
+import { buildChartData, finiteNumber, type ChartDef } from '../../utils/chartHelpers.ts';
 import { buildMetricCsv, chartResultsToColumns } from '../../utils/metricSeriesExport.ts';
 import type { InboundTimeSeriesValue, OutboundTimeSeriesValue } from '../../utils/statsTypes.ts';
 import type { UnmatchedRtpEntry } from '../../utils/unmatchedRtp.ts';
@@ -47,7 +47,7 @@ function UnmatchedEntry({ entry, eventBus }: { entry: UnmatchedRtpEntry; eventBu
     : buildChartData(entry.values as InboundTimeSeriesValue[], [
         { title: 'Actual Bitrate (kbps)', tip: 'How much this stream actually moved per second. This stream could not be matched to anything the server recorded, so the traffic is real but its owner is unknown.', extract: (v) => v._actualBitrateKbps, formatter: (v) => formatBps(v * 1000), needNonZero: true },
         { title: 'Audio Level', tip: 'How loud the received audio was. A long stretch at or near zero means silence arrived — either nobody spoke, or the sending side was producing nothing.', extract: (v) => v.audioLevel, formatter: (v) => v.toFixed(4), needNonZero: true, condition: isAudio },
-        { title: 'Jitter (ms)', tip: 'How irregularly packets arrived. Under 30 ms is unremarkable; above 100 ms the receiver is largely failing to smooth it out and you should expect audible or visible artifacts.', extract: (v) => (v.jitter != null ? v.jitter * 1000 : undefined), formatter: (v) => `${v.toFixed(2)} ms`, needNonZero: true },
+        { title: 'Jitter (ms)', tip: 'How irregularly packets arrived. Under 30 ms is unremarkable; above 100 ms the receiver is largely failing to smooth it out and you should expect audible or visible artifacts.', extract: (v) => { const n = finiteNumber(v.jitter); return n == null ? undefined : n * 1000; }, formatter: (v) => `${v.toFixed(2)} ms`, needNonZero: true },
         { title: 'Packets Lost', tip: 'Cumulative packets that never arrived. The slope matters more than the height: a step means a burst of loss, a steady climb means a consistently lossy link.', extract: (v) => v.packetsLost, needNonZero: true },
         { title: 'Frame Rate (FPS)', tip: 'Frames per second on this stream. Below about 10 fps motion looks visibly choppy; a drop to zero while bitrate continues means frames stopped being produced or decoded rather than the link failing.', extract: (v) => v.framesPerSecond, formatter: (v) => `${v.toFixed(1)} fps`, needNonZero: true, condition: isVideo },
       ] satisfies ChartDef<InboundTimeSeriesValue>[]);

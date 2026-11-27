@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
 import type { SessionModel } from '../../utils/sessionModel.ts';
 import { formatHMS, d3TimeFormat, d3TimeScale } from '../../utils/formatting.ts';
+import { html, toHtmlString } from '../../utils/safeHtml.ts';
 import { useTimezoneTick, type Tz } from '../../stores/tzStore.ts';
 import styles from './SessionTimeline.module.css';
 
@@ -123,13 +124,14 @@ export function SessionTimeline({ model, onClientClick }: SessionTimelineProps) 
           .on('mouseenter', function (event: MouseEvent) {
             d3.select(this).attr('opacity', '1').attr('stroke', '#fff').attr('stroke-width', '1.5');
             const sfuLine = stint.region
-              ? `<div class="${styles.tooltipSfu}">SFU: ${stint.region}${stint.routerId ? ` · ${stint.routerId.slice(0, 10)}…` : ''}</div>`
-              : '';
-            tooltip.innerHTML = `
+              ? html`<div class="${styles.tooltipSfu}">SFU: ${stint.region}${stint.routerId ? ` · ${stint.routerId.slice(0, 10)}…` : ''}</div>`
+              : null;
+            const tip = html`
               <div class="${styles.tooltipName}">${label}<span class="${styles.tooltipId}">${clientId}</span></div>
               ${sfuLine}
               <div class="${styles.tooltipTime}">${formatHMS(joined, tz)} – ${formatHMS(left, tz)}</div>
             `;
+            tooltip.innerHTML = toHtmlString(tip);
             tooltip.style.opacity = '1';
             tooltip.style.left = event.clientX + 12 + 'px';
             tooltip.style.top  = event.clientY - 10 + 'px';
