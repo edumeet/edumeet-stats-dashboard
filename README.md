@@ -411,14 +411,20 @@ docker build -t observertc-stats .
 docker run --rm -p 127.0.0.1:3000:3000 --env-file .env.local observertc-stats
 ```
 
-Or the whole stack, dashboard plus a MinIO bucket to point it at:
+Or the whole stack, dashboard plus an S3 bucket to point it at:
 
 ```bash
-docker compose up --build     # dashboard :3000, MinIO console :9001
+docker compose up --build     # dashboard :3000, S3 API :7070
+docker compose cp ./my-room storage:/data/observertc/   # put a room's folder into the bucket
 ```
 
-That stack is for your own machine: it runs without a sign-in and with MinIO's
-default credentials, and publishes its ports on 127.0.0.1 only.
+Storage in that stack is the [Versity S3 Gateway](https://github.com/versity/versitygw)
+over a directory: a bucket is a directory and an object is a file, so call
+folders can be copied in as they are. (MinIO, which the stack used before, no
+longer publishes container images.)
+
+That stack is for your own machine: it runs without a sign-in and with keys that
+are written in the compose file, and publishes its ports on 127.0.0.1 only.
 
 **Everything is configured from the environment at runtime**, so one image runs
 against any S3-compatible storage — a developer's MinIO, staging and production
