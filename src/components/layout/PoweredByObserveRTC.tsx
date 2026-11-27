@@ -1,4 +1,5 @@
 import styles from './PoweredByObserveRTC.module.css';
+import { BASE_PATH } from '../../lib/basePath.ts';
 
 /**
  * "Powered by ObserveRTC" credit, pinned to the bottom-left of every page.
@@ -21,7 +22,7 @@ export function PoweredByObserveRTC() {
       rel="noopener noreferrer"
       title="Powered by ObserveRTC"
     >
-      <img className={styles.mark} src="/observertc-logo.svg" alt="" aria-hidden="true" />
+      <img className={styles.mark} src={`${BASE_PATH}/observertc-logo.svg`} alt="" aria-hidden="true" />
       <span className={styles.prefix}>Powered by</span>
       <span className={styles.name}>ObserveRTC</span>
     </a>

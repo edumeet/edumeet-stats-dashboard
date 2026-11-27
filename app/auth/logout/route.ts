@@ -1,4 +1,5 @@
 import { publicHref, readAuthConfig } from '@/lib/auth/config';
+import { BASE_PATH } from '@/lib/basePath';
 import { endSessionUrl } from '@/lib/auth/oidc';
 import { messagePage } from '@/lib/auth/page';
 import { cookieNames, setCookie } from '@/lib/auth/session';
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: Request) {
   const auth = readAuthConfig();
-  if (auth.mode !== 'oidc') return new Response(null, { status: 303, headers: { Location: '/' } });
+  if (auth.mode !== 'oidc') return new Response(null, { status: 303, headers: { Location: `${BASE_PATH}/` } });
 
   if (request.headers.get('origin') !== auth.publicUrl.origin) {
     return new Response('Sign out from the dashboard itself.\n', { status: 403 });

@@ -1,8 +1,10 @@
+import { BASE_PATH, withoutBasePath } from '../lib/basePath.ts';
 import type { RoomListResponse, CallListResponse, ClientsResponse, ClientStatsResponse, CallSummaryResponse, RouterSampleResponse, CallObjectResponse } from './types.ts';
 
-// Empty string = same-origin (Next.js serves /api/* from the same host).
-// Set NEXT_PUBLIC_API_BASE_URL only when the API is on a different origin.
-export const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+// Where the app's own routes are: its sub-path on the same origin, which is
+// the empty string when it is served at the root.
+// Set NEXT_PUBLIC_API_BASE_URL only when the API is somewhere else.
+export const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || BASE_PATH;
 
 /**
  * Every call to the API goes through here.
@@ -15,7 +17,8 @@ export const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 async function apiFetch(path: string, signal?: AbortSignal): Promise<Response> {
   const res = await fetch(`${BASE_URL}${path}`, { signal });
   if (res.status === 401 && typeof window !== 'undefined') {
-    const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    // The sign-in takes the path as the app knows it, without the sub-path.
+    const here = `${withoutBasePath(window.location.pathname)}${window.location.search}${window.location.hash}`;
     window.location.assign(`${BASE_URL}/auth/login?returnTo=${encodeURIComponent(here)}`);
   }
   return res;

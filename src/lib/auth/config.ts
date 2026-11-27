@@ -16,6 +16,8 @@
  * needs Node.
  */
 
+import { BASE_PATH } from '../basePath.ts';
+
 export interface AccessRule {
   /** Dotted path of the claim, for example `roles` or `realm_access.roles`. */
   claim: string;
@@ -78,7 +80,7 @@ function parseUrl(raw: string, name: string, problems: string[]): URL | undefine
   return url;
 }
 
-export function readAuthConfig(env: Env = process.env): AuthConfig {
+export function readAuthConfig(env: Env = process.env, buildBasePath: string = BASE_PATH): AuthConfig {
   if ((env.AUTH_DISABLED ?? '').trim().toLowerCase() === 'true') return { mode: 'disabled' };
 
   const problems: string[] = [];
@@ -91,6 +93,15 @@ export function readAuthConfig(env: Env = process.env): AuthConfig {
 
   const rawPublicUrl = required('AUTH_PUBLIC_URL');
   const publicUrl = rawPublicUrl ? parseUrl(rawPublicUrl, 'AUTH_PUBLIC_URL', problems) : undefined;
+
+  // The build serves under one path only. An address with another path would
+  // send the browser back from the provider to a page that does not exist.
+  if (publicUrl && publicUrl.pathname.replace(/\/+$/, '') !== buildBasePath) {
+    problems.push(
+      `AUTH_PUBLIC_URL has the path "${publicUrl.pathname}", but this build serves under "${buildBasePath || '/'}" ` +
+        '(NEXT_PUBLIC_BASE_PATH, set when the image is built)',
+    );
+  }
 
   const secret = required('AUTH_SECRET');
   if (secret && secret.length < MIN_SECRET_LENGTH) {

@@ -110,7 +110,7 @@ const settings = readAuthConfig({
   OIDC_CLIENT_SECRET: 'client-secret',
   OIDC_ALLOW_CLAIM: 'roles',
   OIDC_ALLOW_VALUES: 'stats-viewer',
-}) as AuthSettings;
+}, '/stats') as AuthSettings;
 assert.equal(settings.mode, 'oidc');
 
 /** The user signs in at the provider: it hands out a code for this attempt. */
