@@ -1,16 +1,10 @@
 import type { ChartDataResult } from './chartHelpers.ts';
+import { escapeCsvValue, toCsvLine } from './csvExport.ts';
 
 export interface ExportMetricColumn {
   key: string;
   data: Array<{ timestamp: Date; value: number }>;
   series?: Array<{ key: string; data: Array<{ timestamp: Date; value: number }> }>;
-}
-
-function csvRow(values: (string | number)[]): string {
-  return values.map((v) => {
-    const s = String(v);
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  }).join(',');
 }
 
 export function titleToMetricKey(title: string): string {
@@ -36,8 +30,13 @@ export function pointSeriesToColumns(
     .map((e) => ({ key: e.key, data: e.data }));
 }
 
-
-/** Compact wide CSV: one row per snapshot, `t` = seconds from first sample. */
+/**
+ * Compact wide CSV: one row per snapshot, `t` = seconds from first sample.
+ *
+ * The title and the column keys can carry text taken from a sample (a stream
+ * key, a series name), so they are cells like any other and go through the
+ * same routine as the values: the title line is exactly one cell.
+ */
 export function metricGroupToCsv(
   sectionTitle: string,
   columns: ExportMetricColumn[],
@@ -74,19 +73,13 @@ export function metricGroupToCsv(
   const sortedMs = [...timestamps].sort((a, b) => a - b);
   const t0 = sortedMs[0];
   const lines = [
-    `${sectionTitle} (${suffix})`,
-    csvRow(['t', ...cols.map((c) => c.key)]),
+    escapeCsvValue(`${sectionTitle} (${suffix})`),
+    toCsvLine(['t', ...cols.map((c) => c.key)]),
   ];
 
   for (const ms of sortedMs) {
     const tSec = Math.round((ms - t0) / 1000);
-    lines.push(csvRow([
-      tSec,
-      ...cols.map((c) => {
-        const v = c.values.get(ms);
-        return v == null ? '' : v;
-      }),
-    ]));
+    lines.push(toCsvLine([tSec, ...cols.map((c) => c.values.get(ms))]));
   }
 
   return lines.join('\n');
