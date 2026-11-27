@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import styles from './StorageStatusNotice.module.css';
+import { BASE_URL } from '../../api/client.ts';
 
 interface HealthResponse {
   status: 'ok' | 'misconfigured' | 'unreachable';
@@ -37,7 +38,7 @@ export function StorageStatusNotice() {
     // The deep check asks storage to answer rather than only checking that the
     // settings look plausible — "S3_BUCKET is set" and "that bucket exists and
     // we may read it" are different claims, and only the second one matters.
-    fetch('/api/health?deep=1', { signal: controller.signal })
+    fetch(`${BASE_URL}/api/health?deep=1`, { signal: controller.signal })
       .then((res) => res.json() as Promise<HealthResponse>)
       .then((body) => setHealth(body))
       .catch(() => {

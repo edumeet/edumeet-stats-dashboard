@@ -4,12 +4,12 @@
 # from the environment at *runtime*, so one image runs against any S3-compatible
 # bucket: a developer's MinIO, staging and production differ by env alone.
 #
-#   docker run --rm -p 3000:3000 --env-file .env.local observertc/stats-dashboard
+#   docker run --rm -p 127.0.0.1:3000:3000 --env-file .env.local observertc/stats-dashboard
 #
 # ...or to build it here:
 #
 #   docker build -t observertc-stats .
-#   docker run --rm -p 3000:3000 --env-file .env.local observertc-stats
+#   docker run --rm -p 127.0.0.1:3000:3000 --env-file .env.local observertc-stats
 #
 # Build-time arguments are limited to what genuinely cannot be deferred (see
 # NEXT_PUBLIC_API_BASE_URL below); credentials are never among them.
@@ -109,6 +109,25 @@ COPY --from=build --chown=nextjs:nodejs /app/public ./public
 # somebody else is a redistribution.
 COPY --from=build --chown=nextjs:nodejs /app/LICENSE /app/NOTICE ./
 
+# Who may open the dashboard. Blank means nobody: the container answers 503
+# until these are set, so an installation that forgot them is closed, not open.
+# .env.example explains each one.
+#
+#   AUTH_PUBLIC_URL       required — the address users open, with its sub-path
+#   AUTH_SECRET           required — signs the session cookie, 32+ characters
+#   OIDC_ISSUER           required — the OpenID Connect provider
+#   OIDC_CLIENT_ID        required — this dashboard's client there
+#   OIDC_CLIENT_SECRET    blank for a public client
+#   OIDC_ALLOW_CLAIM      required — the claim that decides who is let in
+#   OIDC_ALLOW_VALUES     required — the values of it that open the door
+ENV AUTH_PUBLIC_URL="" \
+    AUTH_SECRET="" \
+    OIDC_ISSUER="" \
+    OIDC_CLIENT_ID="" \
+    OIDC_CLIENT_SECRET="" \
+    OIDC_ALLOW_CLAIM="" \
+    OIDC_ALLOW_VALUES=""
+
 USER nextjs
 EXPOSE 3000
 
@@ -117,7 +136,7 @@ EXPOSE 3000
 # readiness probe at the deep one instead.
 #
 # The shallow probe fails only on a *fatal* configuration problem — no bucket,
-# or a malformed endpoint. Absent credentials are a warning, not a failure,
+# a malformed endpoint, or a sign-in that is not configured. Absent credentials are a warning, not a failure,
 # because an ECS/EKS task using an instance role sets neither key and is
 # correct; failing on it would restart-loop a container that was serving fine.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
