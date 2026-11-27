@@ -18,6 +18,91 @@ The dashboard lets you navigate `roomId → callId → clientId` and inspect per
 
 ---
 
+## Who may open it
+
+**The dashboard has to be behind a sign-in before anybody but you can reach it.**
+The bucket holds the diagnostics of every meeting: display names, IP addresses,
+browsers and devices, who talked to whom and when. So the dashboard serves
+nothing, neither a page nor an API route, to a caller who is not signed in, and
+it serves nothing at all until the sign-in is configured: with the settings
+missing, every request is answered with 503.
+
+Sign-in is OpenID Connect, against the provider the installation already has
+(for eduMEET, its Keycloak). Signing in is not enough to get in: the user must
+also hold the claim the operator names, a role, a group or an address.
+
+| Variable | Purpose |
+|---|---|
+| `AUTH_PUBLIC_URL` | **Required.** The address users open, with the sub-path if there is one: `https://meet.example.org/stats` |
+| `AUTH_SECRET` | **Required.** Signs the session cookie. 32 characters or more: `openssl rand -base64 48` |
+| `OIDC_ISSUER` | **Required.** The provider: `https://meet.example.org/kc/realms/dev` |
+| `OIDC_CLIENT_ID` | **Required.** This dashboard's client at the provider |
+| `OIDC_CLIENT_SECRET` | The client's secret. Blank for a public client, which relies on PKCE alone |
+| `OIDC_ALLOW_CLAIM` | **Required.** The claim that decides who is let in: `roles` |
+| `OIDC_ALLOW_VALUES` | **Required.** The values that open the door, comma separated: `stats-viewer` |
+| `OIDC_SCOPE` | Scopes to ask for. Default `openid profile email` |
+| `AUTH_SESSION_TTL` | Seconds until a user signs in again. Default 28800 (8 hours) |
+| `AUTH_DISABLED` | `true` switches the sign-in off. For your own machine only |
+
+There is no default for the rule and no way to say "everybody who can sign in":
+on a provider where people register themselves that would be everybody. The
+claim is looked up in the ID token and in the userinfo answer, and a dot reaches
+into a nested claim (`realm_access.roles`). It matches when it equals one of the
+values or is a list that contains one. With `OIDC_ALLOW_CLAIM=email`, the
+provider's `email_verified` must be true as well, since an address somebody typed
+into their own profile proves nothing.
+
+### With Keycloak
+
+In the realm your users are in:
+
+1. **Create a client**, for example `edumeet-stats`: OpenID Connect, client
+   authentication on, standard flow only. Valid redirect URI
+   `<AUTH_PUBLIC_URL>/auth/callback`, valid post logout redirect URI
+   `<AUTH_PUBLIC_URL>/auth/logout`. Its secret is on the Credentials tab.
+2. **Create a role** in that client, for example `stats-viewer`, and give it to
+   the people who may read the diagnostics (Users → Role mapping).
+3. **Put the role into the ID token.** Keycloak sends roles in the access token
+   only. In the client: Client scopes → the dedicated scope → Add mapper → By
+   configuration → User Client Role; client ID `edumeet-stats`, token claim name
+   `roles`, multivalued on, add to ID token on.
+
+```bash
+AUTH_PUBLIC_URL=https://meet.example.org/stats
+AUTH_SECRET=...            # openssl rand -base64 48
+OIDC_ISSUER=https://meet.example.org/kc/realms/dev
+OIDC_CLIENT_ID=edumeet-stats
+OIDC_CLIENT_SECRET=...
+OIDC_ALLOW_CLAIM=roles
+OIDC_ALLOW_VALUES=stats-viewer
+```
+
+### What the sign-in does
+
+- Authorization code flow with PKCE. State, nonce, issuer, audience and the
+  signature of the ID token are checked by
+  [`openid-client`](https://github.com/panva/openid-client).
+- The session is a signed cookie (`HttpOnly`, `SameSite=Lax`, `Secure` over
+  https, limited to the dashboard's path). There is no session store, so any
+  number of containers can serve one user. Changing `AUTH_SECRET` signs
+  everybody out.
+- The check is made twice: in `middleware.ts` for every path, so that a route
+  added later is closed without anybody thinking of it, and again inside each
+  API route, where the storage calls are made. What is open without a session
+  is the sign-in itself (`/auth/*`) and `GET /api/health`, which then says `ok`
+  or not and nothing else.
+- A presigned URL for a client's sample file works without a session until it
+  expires (`S3_PRESIGN_TTL`, 15 minutes). It is made for a signed-in user only,
+  and only for a sample file that exists.
+- One dashboard shows one bucket, or one `S3_PREFIX` of it, to everybody who
+  passes the rule. For tenants that must not see each other's meetings, run one
+  dashboard per prefix, each with its own rule.
+- On the same host name as other applications, a script injected into one of
+  them can call this dashboard with the user's session. A host name of its own
+  keeps it apart.
+
+---
+
 ## Getting started
 
 ### 1. Install dependencies
@@ -35,6 +120,9 @@ cp .env.example .env.local
 ```
 
 See [Storage configuration](#storage-configuration) below.
+
+On your own machine, add `AUTH_DISABLED=true` to `.env.local` to work without a
+sign-in. Anywhere else, configure it: see [Who may open it](#who-may-open-it).
 
 ### 3. Run the dev server
 
@@ -190,7 +278,12 @@ swap it for `ubuntu-latest` plus `docker/setup-qemu-action` and accept the wait.
 
 The Next.js server handles object listing via the S3 API (credentials stay server-side). The browser fetches stat files directly from storage.
 
+Every route answers a signed-in caller only (401 otherwise), see
+[Who may open it](#who-may-open-it). `GET /api/health` is the exception.
+
 ```
+GET /api                                    list roomIds
+GET /api/session                            who is signed in
 GET /api/:roomId                            list callIds in a room
 GET /api/:roomId/:callId                    list clientIds, routerIds *and sfuIds* in a call
 GET /api/:roomId/:callId/:clientId          return direct storage URL for the .jsonl file
@@ -207,6 +300,17 @@ Everything for a call lives in one folder:
 <roomId>/<callId>/call-summary.json                single-SFU calls, and older writers
 <roomId>/<callId>/mediasoup-router-<routerId>.json one per router
 ```
+
+The two lists, rooms and calls, cost the same on a full bucket as on an empty
+one (`src/lib/listing.ts`). The names come from a listing with a delimiter, so
+storage answers with the folders themselves, up to 10,000 of them. The times
+come from a plain listing that stops after 50 pages (50,000 objects); folders it
+did not reach are listed without a time, after the others. Requests for the same
+list share one listing while it runs and for 30 seconds afterwards, and a
+listing nobody waits for any more is stopped. When a limit was hit, the answer
+says so (`truncated`, `activityPartial`) and the page shows a note. On a bucket
+that large, the newest rooms are no longer guaranteed to be on top: open a room
+by its id.
 
 `GET /api/:roomId/:callId` reports the router ids it finds in that listing, so
 the SFU view works even when the summaries are missing, still being written, or
@@ -288,8 +392,12 @@ The published image is [`observertc/stats-dashboard`](https://hub.docker.com/r/o
 on Docker Hub, built for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker run --rm -p 3000:3000 --env-file .env.local observertc/stats-dashboard
+docker run --rm -p 127.0.0.1:3000:3000 --env-file .env.local observertc/stats-dashboard
 ```
+
+The port is published on this machine only. To let others in, put a proxy with
+TLS in front and configure the sign-in ([Who may open it](#who-may-open-it));
+without it the container answers 503.
 
 Tags: `latest` follows the default branch; a release tag `vX.Y.Z` publishes
 `X.Y.Z`, `X.Y` and (from 1.0 onward) `X`; every build also gets a short-SHA tag,
@@ -300,7 +408,7 @@ Or build it yourself:
 
 ```bash
 docker build -t observertc-stats .
-docker run --rm -p 3000:3000 --env-file .env.local observertc-stats
+docker run --rm -p 127.0.0.1:3000:3000 --env-file .env.local observertc-stats
 ```
 
 Or the whole stack, dashboard plus a MinIO bucket to point it at:
@@ -308,6 +416,9 @@ Or the whole stack, dashboard plus a MinIO bucket to point it at:
 ```bash
 docker compose up --build     # dashboard :3000, MinIO console :9001
 ```
+
+That stack is for your own machine: it runs without a sign-in and with MinIO's
+default credentials, and publishes its ports on 127.0.0.1 only.
 
 **Everything is configured from the environment at runtime**, so one image runs
 against any S3-compatible storage — a developer's MinIO, staging and production
@@ -323,6 +434,7 @@ differ by environment alone. `.env.example` documents every variable.
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Omit to use the SDK's credential chain (an instance role, a mounted profile) |
 | `S3_FORCE_PATH_STYLE` | `true` for MinIO and most self-hosted gateways, `false` for AWS and R2 |
 | `S3_PRESIGN_TTL` | Presigned URL lifetime in seconds. Default 900 |
+| `AUTH_*` / `OIDC_*` | **Required.** The sign-in, see [Who may open it](#who-may-open-it) |
 | `PORT` / `HOSTNAME` | Default `3000` / `0.0.0.0` |
 
 Three things about this are worth knowing before deploying it.
@@ -354,6 +466,12 @@ is the default rather than something to configure.
 `GET /api/health` reports the storage configuration (never the credentials) and
 what is missing from it. `GET /api/health?deep=1` also lists one key from the
 bucket, turning "the settings look right" into "storage actually answered".
+
+That is what a signed-in user gets. It is the one API route that answers without
+a session, because a container's healthcheck has none, and then it says only
+`{"status":"ok"}` or `{"status":"misconfigured"}` with 200 or 503: the endpoint,
+the bucket and the problems describe the installation and are for its operators.
+A sign-in that is not configured counts as misconfigured.
 
 The deep check is opt-in because it costs a request: point a **liveness** probe
 at the plain endpoint and a **readiness** probe at the deep one. The container's
@@ -1162,6 +1280,9 @@ npm run test:call-dashboard     # the call page's model: loaded clients, facts, 
 npm run test:worker-requests    # reply correlation for the shared stats worker
 npm run test:ice-candidate-story# what happened to one ICE candidate, over time
 npm run test:storage-config     # the deployment's storage settings, and what counts as broken
+npm run test:auth               # who gets in: settings, the decision per request, cookies, every route wrapped
+npm run test:oidc-flow          # one sign-in end to end against a provider inside the test, and ten ways it must fail
+npm run test:listing            # the room and call lists on 300,000 objects: bounded, shared, stopped
 ```
 
 `scripts/fixtures/` holds an unmodified `call-summary.json` and

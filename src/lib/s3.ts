@@ -1,4 +1,5 @@
-import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { createFolderLister, type ListedPage } from './listing.ts';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /**
@@ -233,41 +234,52 @@ export interface ObjectEntry {
 }
 
 /**
- * List all objects under a prefix (no delimiter — recurses into subdirectories).
- * Handles S3 pagination automatically.
- * e.g. prefix="roomA/"  →  all .jsonl files in that room across all calls
+ * One page of a listing, for the room and call lists (see `listing.ts`, which
+ * decides how many pages a request may cost).
  *
  * Takes and returns keys *relative to `S3_PREFIX`*, so a caller listing `''`
  * gets the rooms of its own tenant rather than a single folder named after it.
  */
-export async function listObjectsDeep(prefix: string): Promise<ObjectEntry[]> {
-  const results: ObjectEntry[] = [];
-  let token: string | undefined;
-  do {
-    const cmd = new ListObjectsV2Command({
-      Bucket: bucketName(),
-      Prefix: toStorageKey(prefix),
-      ContinuationToken: token,
-    });
-    const res = await s3Client().send(cmd);
-    for (const obj of res.Contents ?? []) {
-      if (!obj.Key) continue;
-      const key = fromStorageKey(obj.Key);
+async function listPage(request: {
+  prefix: string;
+  delimiter?: '/';
+  token?: string;
+  signal?: AbortSignal;
+}): Promise<ListedPage> {
+  const cmd = new ListObjectsV2Command({
+    Bucket: bucketName(),
+    Prefix: toStorageKey(request.prefix),
+    Delimiter: request.delimiter,
+    ContinuationToken: request.token,
+  });
+  const res = await s3Client().send(cmd, { abortSignal: request.signal });
+  return {
+    objects: (res.Contents ?? [])
+      .filter((o) => o.Key)
+      .map((o) => ({ key: fromStorageKey(o.Key!), lastModified: o.LastModified }))
       // The prefix itself can exist as a zero-byte folder marker, which
       // relativizes to nothing and is not an object anybody asked for.
-      if (key === '') continue;
-      results.push({ key, lastModified: obj.LastModified });
-    }
-    token = res.IsTruncated ? res.NextContinuationToken : undefined;
-  } while (token);
-  return results;
+      .filter((o) => o.key !== ''),
+    folders: (res.CommonPrefixes ?? [])
+      .filter((p) => p.Prefix)
+      .map((p) => fromStorageKey(p.Prefix!)),
+    next: res.IsTruncated ? res.NextContinuationToken : undefined,
+  };
 }
+
+const folderLister = createFolderLister(listPage);
+
+/**
+ * The folders directly below a prefix, newest first: rooms for `''`, calls for
+ * `<room>/`. Bounded and shared between callers; see `listing.ts`.
+ */
+export const listFolders = folderLister.folders;
 
 /**
  * List the immediate object keys + metadata under a prefix (single level, with delimiter).
  * e.g. prefix="roomA/call1/"  →  ["roomA/call1/client1.jsonl", ...]
  *
- * Relative to `S3_PREFIX`, like `listObjectsDeep`.
+ * Relative to `S3_PREFIX`, like every key in this module.
  */
 export async function listObjects(prefix: string): Promise<ObjectEntry[]> {
   const cmd = new ListObjectsV2Command({
@@ -280,6 +292,23 @@ export async function listObjects(prefix: string): Promise<ObjectEntry[]> {
     .filter((o) => o.Key)
     .map((o) => ({ key: fromStorageKey(o.Key!), lastModified: o.LastModified }))
     .filter((o) => o.key !== '');
+}
+
+/**
+ * Is there an object under this key? `key` is relative to `S3_PREFIX`.
+ *
+ * Asked before a URL is signed: a signature is a permission to read, and it
+ * is given for an object that exists, not for whatever name a request carries.
+ */
+export async function objectExists(key: string): Promise<boolean> {
+  try {
+    await s3Client().send(new HeadObjectCommand({ Bucket: bucketName(), Key: toStorageKey(key) }));
+    return true;
+  } catch (err) {
+    const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+    if (status === 404 || (err as Error)?.name === 'NotFound') return false;
+    throw err;
+  }
 }
 
 /**

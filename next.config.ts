@@ -19,6 +19,27 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version ?? '0.0.0',
   },
+
+  /**
+   * Three headers on every response, none of which can break a page.
+   *
+   * The addresses here contain room and call ids, so they are not sent along
+   * to other sites as a referrer. The dashboard has no reason to be shown
+   * inside another site's frame, where a click could be steered. And a browser
+   * should take a response for the type it says it is.
+   */
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Referrer-Policy', value: 'same-origin' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

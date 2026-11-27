@@ -7,7 +7,18 @@ export interface RoomEntry {
   lastModified?: number; // epoch ms of the most recently changed object in this room
 }
 
-export interface RoomListResponse {
+/**
+ * A listing is made at a bounded cost (see `src/lib/listing.ts`), so on a very
+ * large bucket it can be incomplete. The two flags say how.
+ */
+export interface ListingLimitsHit {
+  /** There are more entries than one listing returns; the list is cut. */
+  truncated?: boolean;
+  /** Not every object was read for the times; some entries have none. */
+  activityPartial?: boolean;
+}
+
+export interface RoomListResponse extends ListingLimitsHit {
   success: boolean;
   rooms: RoomEntry[];
 }
@@ -17,7 +28,7 @@ export interface CallEntry {
   lastModified?: number; // epoch ms of the most recently changed object in this call
 }
 
-export interface CallListResponse {
+export interface CallListResponse extends ListingLimitsHit {
   success: boolean;
   calls: CallEntry[];
 }

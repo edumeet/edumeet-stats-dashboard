@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { callerOf, mayRead } from '@/lib/auth/guard';
 import {
   announceStorageConfig,
   s3Client,
@@ -32,11 +33,37 @@ export const dynamic = 'force-dynamic';
  * they were serving perfectly well.
  *
  * Credentials are never echoed — only where they came from.
+ *
+ * ## Without a session
+ *
+ * This is the one API route that answers a caller who is not signed in, because
+ * the container's healthcheck is such a caller. It gets `ok` or `misconfigured`
+ * and nothing else: the endpoint, the bucket and the wording of the problems
+ * describe the installation and are for its operators. The deep check is for
+ * them too, since it makes a storage call per request.
+ *
+ * A sign-in that is not configured is `misconfigured` as well: the dashboard
+ * serves nothing in that state, and the healthcheck should say so.
  */
 export async function GET(request: Request) {
   announceStorageConfig();
   const config = storageConfig();
   const { problems, warnings } = storageConfigReport(config);
+
+  const caller = await callerOf(request);
+  if (caller.config.mode === 'misconfigured') {
+    problems.push(...caller.config.problems.map((p) => `Sign-in: ${p}`));
+  }
+  if (caller.config.mode === 'disabled') {
+    warnings.push('AUTH_DISABLED=true: the dashboard is open to everybody who can reach it.');
+  }
+
+  if (!mayRead(caller)) {
+    return NextResponse.json(
+      { status: problems.length === 0 ? 'ok' : 'misconfigured' },
+      { status: problems.length === 0 ? 200 : 503, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
 
   const storage = {
     endpoint: config.endpoint ?? '(aws default)',

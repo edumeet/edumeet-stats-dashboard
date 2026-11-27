@@ -8,7 +8,7 @@ import { IdBadge } from '../components/sections/IdBadge.tsx';
 import { StorageStatusNotice } from '../components/layout/StorageStatusNotice.tsx';
 import { LoadingSpinner } from '../components/layout/LoadingSpinner.tsx';
 import { addToRoomIdHistory } from '../utils/roomIdHistory.ts';
-import { fetchRooms } from '../api/client.ts';
+import { fetchRooms, listingNote } from '../api/client.ts';
 import { formatDateTime } from '../utils/formatting.ts';
 import { useTimezoneTick } from '../stores/index.ts';
 import styles from './HomePage.module.css';
@@ -39,6 +39,8 @@ export function HomePage() {
       setRooms(data.rooms ?? []);
       setRoomsLoaded(true);
       setListOpen(true);
+      const note = listingNote('rooms', data);
+      if (note) showBanner(note, 'info');
     } catch (err) {
       if (ac.signal.aborted) return;
       if ((err as Error).name !== 'AbortError') {

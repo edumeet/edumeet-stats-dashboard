@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useCallback, useRef, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { fetchCalls } from '../api/client.ts';
+import { fetchCalls, listingNote } from '../api/client.ts';
 import { useAppStore, useCallListStore, useCallStore, usePaneStore, useTimezoneTick } from '../stores/index.ts';
 import { LoadingSpinner } from '../components/layout/LoadingSpinner.tsx';
 import { IdBadge } from '../components/sections/IdBadge.tsx';
@@ -44,6 +44,8 @@ export function CallListPage() {
       setCalls(data.calls); // already sorted newest-first by the API
       setCacheKey(key);
       setLoading(false);
+      const note = listingNote('calls', data);
+      if (note) showBanner(note, 'info');
     } catch (err) {
       if (ac.signal.aborted) return;
       if ((err as Error).name !== 'AbortError') {

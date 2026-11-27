@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { guarded } from '@/lib/auth/guard';
+import { keySegments } from '@/lib/keys';
 import { listObjects } from '@/lib/s3';
 import { isCallSummaryName, sfuIdFromSummaryName } from '@/schema/CallSummary';
 
@@ -33,11 +35,19 @@ const ROUTER_PREFIX = 'mediasoup-router-';
  * only the bare `call-summary.json` would turn each of the others into a
  * phantom client with an SFU id for a client id.
  */
-export async function GET(
+export const GET = guarded(async (
   _req: Request,
   { params }: { params: Promise<{ roomId: string; callId: string }> },
-) {
-  const { roomId, callId } = await params;
+) => {
+  const raw = await params;
+  const segments = keySegments(raw.roomId, raw.callId);
+  if (!segments) {
+    return NextResponse.json(
+      { success: false, clients: [], routerIds: [], sfuIds: [], objectNames: [] },
+      { status: 400 },
+    );
+  }
+  const [roomId, callId] = segments;
   try {
     const objects = await listObjects(`${roomId}/${callId}/`);
 
@@ -94,4 +104,4 @@ export async function GET(
       { status: 500 },
     );
   }
-}
+});

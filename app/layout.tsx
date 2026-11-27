@@ -5,6 +5,7 @@ import { ThemeInitializer } from '@/components/layout/ThemeInitializer';
 import { TzInitializer } from '@/components/layout/TzInitializer';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { TimezoneToggle } from '@/components/layout/TimezoneToggle';
+import { SessionBadge } from '@/components/layout/SessionBadge';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { Banner } from '@/components/layout/Banner';
 import { CompareFloatingButton } from '@/components/compare/CompareFloatingButton';
@@ -49,6 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <TzInitializer />
         <ThemeToggle />
         <TimezoneToggle />
+        <SessionBadge />
         <CompareFloatingButton />
         <ChartCompareModal />
         <div className={styles.layout}>

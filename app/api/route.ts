@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { announceStorageConfig, listObjectsDeep } from '@/lib/s3';
+import { guarded } from '@/lib/auth/guard';
+import { ListingBusyError } from '@/lib/listing';
+import { announceStorageConfig, listFolders } from '@/lib/s3';
 
 /**
  * Never prerendered.
@@ -12,27 +14,17 @@ import { announceStorageConfig, listObjectsDeep } from '@/lib/s3';
 export const dynamic = 'force-dynamic';
 
 // GET /api — list all rooms with their most recently modified timestamp
-export async function GET() {
+export const GET = guarded(async (request: Request) => {
   announceStorageConfig();
   try {
-    const objects = await listObjectsDeep('');
-
-    // Group by first path segment (roomId), track max LastModified
-    const roomMap = new Map<string, number>();
-    for (const { key, lastModified } of objects) {
-      const roomId = key.split('/')[0];
-      if (!roomId) continue;
-      const ts = lastModified?.getTime() ?? 0;
-      roomMap.set(roomId, Math.max(roomMap.get(roomId) ?? 0, ts));
-    }
-
-    const rooms = Array.from(roomMap.entries())
-      .map(([id, lastModified]) => ({ id, lastModified: lastModified || undefined }))
-      .sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
-
-    return NextResponse.json({ success: true, rooms });
+    const { entries, truncated, activityPartial } = await listFolders('', request.signal);
+    return NextResponse.json({ success: true, rooms: entries, truncated, activityPartial });
   } catch (err) {
+    if (request.signal.aborted) return new Response(null, { status: 499 });
+    if (err instanceof ListingBusyError) {
+      return NextResponse.json({ success: false, rooms: [], error: err.message }, { status: 503 });
+    }
     console.error('[api/rooms]', err);
     return NextResponse.json({ success: false, rooms: [] }, { status: 500 });
   }
-}
+});

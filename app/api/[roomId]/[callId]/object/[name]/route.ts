@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { guarded } from '@/lib/auth/guard';
+import { keySegments } from '@/lib/keys';
 import { s3Client, bucketName, toStorageKey } from '@/lib/s3';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { isCallSummaryName } from '@/schema/CallSummary';
@@ -43,12 +45,16 @@ function isBrowsableObject(name: string): boolean {
  * was this call", and this one answers "what did *this file* actually say",
  * which is the question you ask when the merge looks wrong.
  */
-export async function GET(
+export const GET = guarded(async (
   _req: Request,
   { params }: { params: Promise<{ roomId: string; callId: string; name: string }> },
-) {
-  const { roomId, callId, name: rawName } = await params;
-  const name = decodeURIComponent(rawName);
+) => {
+  const raw = await params;
+  const segments = keySegments(raw.roomId, raw.callId, raw.name);
+  if (!segments) {
+    return NextResponse.json({ success: false, error: 'Not a browsable object.' }, { status: 400 });
+  }
+  const [roomId, callId, name] = segments;
 
   if (!isBrowsableObject(name)) {
     return NextResponse.json({ success: false, error: 'Not a browsable object.' }, { status: 400 });
@@ -74,4 +80,4 @@ export async function GET(
   } catch {
     return NextResponse.json({ success: false, name, error: 'Not found.' }, { status: 404 });
   }
-}
+});

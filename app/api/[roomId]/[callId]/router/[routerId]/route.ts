@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { guarded } from '@/lib/auth/guard';
+import { keySegments } from '@/lib/keys';
 import { s3Client, bucketName, toStorageKey } from '@/lib/s3';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import type { MediasoupRouterSample } from '@/schema/MediasoupRouter';
@@ -14,11 +16,14 @@ import type { MediasoupRouterSample } from '@/schema/MediasoupRouter';
 export const dynamic = 'force-dynamic';
 
 // GET /api/:roomId/:callId/router/:routerId — fetch and return the router sample JSON
-export async function GET(
+export const GET = guarded(async (
   _req: Request,
   { params }: { params: Promise<{ roomId: string; callId: string; routerId: string }> },
-) {
-  const { roomId, callId, routerId } = await params;
+) => {
+  const raw = await params;
+  const segments = keySegments(raw.roomId, raw.callId, raw.routerId);
+  if (!segments) return NextResponse.json({ success: false, router: null }, { status: 400 });
+  const [roomId, callId, routerId] = segments;
   const key = `${roomId}/${callId}/mediasoup-router-${routerId}.json`;
   try {
     const obj = await s3Client().send(new GetObjectCommand({ Bucket: bucketName(), Key: toStorageKey(key) }));
@@ -29,4 +34,4 @@ export async function GET(
   } catch {
     return NextResponse.json({ success: false, router: null }, { status: 404 });
   }
-}
+});

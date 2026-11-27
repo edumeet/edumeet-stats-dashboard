@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
-import { listObjectsDeep } from '@/lib/s3';
+import { guarded } from '@/lib/auth/guard';
+import { keySegment } from '@/lib/keys';
+import { ListingBusyError } from '@/lib/listing';
+import { listFolders } from '@/lib/s3';
 
 /**
  * Never prerendered.
@@ -12,30 +15,21 @@ import { listObjectsDeep } from '@/lib/s3';
 export const dynamic = 'force-dynamic';
 
 // GET /api/:roomId — list calls with their most recently modified timestamp
-export async function GET(
-  _req: Request,
+export const GET = guarded(async (
+  request: Request,
   { params }: { params: Promise<{ roomId: string }> },
-) {
-  const { roomId } = await params;
+) => {
+  const roomId = keySegment((await params).roomId);
+  if (roomId === null) return NextResponse.json({ success: false, calls: [] }, { status: 400 });
   try {
-    const objects = await listObjectsDeep(`${roomId}/`);
-
-    // Group by second path segment (callId), track max LastModified
-    const callMap = new Map<string, number>();
-    for (const { key, lastModified } of objects) {
-      const callId = key.split('/')[1];
-      if (!callId) continue;
-      const ts = lastModified?.getTime() ?? 0;
-      callMap.set(callId, Math.max(callMap.get(callId) ?? 0, ts));
-    }
-
-    const calls = Array.from(callMap.entries())
-      .map(([id, lastModified]) => ({ id, lastModified: lastModified || undefined }))
-      .sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
-
-    return NextResponse.json({ success: true, calls });
+    const { entries, truncated, activityPartial } = await listFolders(`${roomId}/`, request.signal);
+    return NextResponse.json({ success: true, calls: entries, truncated, activityPartial });
   } catch (err) {
+    if (request.signal.aborted) return new Response(null, { status: 499 });
+    if (err instanceof ListingBusyError) {
+      return NextResponse.json({ success: false, calls: [], error: err.message }, { status: 503 });
+    }
     console.error('[api/roomId]', err);
     return NextResponse.json({ success: false, calls: [] }, { status: 500 });
   }
-}
+});

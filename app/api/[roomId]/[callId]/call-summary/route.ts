@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { guarded } from '@/lib/auth/guard';
+import { keySegments } from '@/lib/keys';
 import { s3Client, bucketName, listObjects, toStorageKey } from '@/lib/s3';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import {
@@ -33,11 +35,14 @@ export const dynamic = 'force-dynamic';
  * `schema/CallSummary.ts`). Normalizing and merging here rather than in the
  * browser keeps every consumer on one shape and one merge policy.
  */
-export async function GET(
+export const GET = guarded(async (
   _req: Request,
   { params }: { params: Promise<{ roomId: string; callId: string }> },
-) {
-  const { roomId, callId } = await params;
+) => {
+  const raw = await params;
+  const segments = keySegments(raw.roomId, raw.callId);
+  if (!segments) return NextResponse.json({ success: false, summary: null }, { status: 400 });
+  const [roomId, callId] = segments;
   const prefix = `${roomId}/${callId}/`;
 
   let keys: string[];
@@ -113,4 +118,4 @@ export async function GET(
     merged && unreadable > 0 ? { ...merged, missingSources: unreadable } : merged;
 
   return NextResponse.json({ success: true, summary, partial: unreadable > 0 ? unreadable : undefined });
-}
+});
